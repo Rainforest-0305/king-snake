@@ -23,11 +23,11 @@
  *       -> Vite asset filenames are content-hashed and icons are immutable per
  *          CACHE version, so a cache hit is always the correct bytes.
  */
-const CACHE = 'king-snake-v1-6e7e6c84';
+const CACHE = 'king-snake-v1-90231f82';
 const PRECACHE = [
   "./",
-  "./assets/index-Bjl4b0Tr.js",
-  "./assets/style-D9A4QO2D.css",
+  "./assets/index-BXPeWUgG.js",
+  "./assets/style-H7WDGssU.css",
   "./icons/icon-128.png",
   "./icons/icon-144.png",
   "./icons/icon-152.png",
