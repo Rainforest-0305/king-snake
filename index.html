@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  lang / title 은 «부팅 전 기본값»이다. 실제 값은 src/i18n 의 setLocale() 이
+  저장된 선택 또는 navigator.language 로 판별해 덮어쓴다.
+
+  ★ 그럼에도 여기에 이름을 «정적으로» 박아 두는 이유:
+    링크 공유 카드·검색 크롤러·JS 실행 전 탭은 전부 정적 title 을 읽고,
+    크롤러는 JS 를 실행하지 않는다. 런타임 주입만 믿으면 배포 후에야
+    옛 이름이 노출된다(애니멀 라이더 2026-08-05 실사고).
+  ★ brand.ts 를 바꾸면 아래 <title> 과 public/manifest.json 도 «같이» 바꿔라.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      viewport-fit=cover 필수. 없으면 CSS env(safe-area-inset-*) 가 전부 0 이 되어
+      노치/홈바 있는 폰에서 HUD 가 가려진다.
+      user-scalable=no + maximum-scale=1 은 게임 중 더블탭 줌 방지.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#05060e" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="Grow the longest snake in the arena. Eat orbs, sprint to cut off rivals, and unlock 12 real snake species. Single player, fully offline - no ads, no sign-in, no data collection." />
+
+    <title>King Snake</title>
+
+    <!--
+      ★ PWABuilder 는 «이 링크»로 manifest 를 찾는다. 빠지면 패키지 생성 자체가
+        실패한다(MS Store 경로가 통째로 막힌다). 지우지 마라.
+    -->
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <meta name="application-name" content="King Snake" />
+    <meta name="apple-mobile-web-app-title" content="King Snake" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!--
+      ★ 외부 리소스 0건. 웹폰트·애널리틱스·광고 SDK 어느 것도 로드하지 않는다.
+        스토어 제출 시 「네트워크 요청 없음」을 신고하는데, 요청이 하나라도 있으면
+        그 신고가 거짓이 된다(기존 5종 전부 이 규칙으로 통과했다).
+    -->
+    <script type="module" crossorigin src="./assets/index-Bjl4b0Tr.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/style-D9A4QO2D.css">
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="stage"></canvas>
+    </div>
+    <script>
+      // 서비스워커 등록. ★ localhost 는 건너뛴다 —
+      //   개발 중에 캐시가 남으면 「고쳤는데 안 바뀐다」로 몇 시간을 태운다.
+      if ('serviceWorker' in navigator) {
+        var h = location.hostname;
+        if (h !== 'localhost' && h !== '127.0.0.1') {
+          window.addEventListener('load', function () {
+            navigator.serviceWorker.register('./sw.js').catch(function (err) {
+              console.warn('[pwa] service worker registration failed:', err);
+            });
+          });
+        }
+      }
+    </script>
+  </body>
+</html>

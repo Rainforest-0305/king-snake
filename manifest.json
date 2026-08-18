@@ -1,0 +1,168 @@
+{
+  "id": "king-snake",
+  "name": "King Snake",
+  "short_name": "King Snake",
+  "description": "Grow the longest snake in the arena. Eat orbs, sprint to cut off rivals, and make others crash into your body. 28 AI opponents, 12 real snake species to unlock, and a live leaderboard. Single player and fully offline: no ads, no sign-in, no data collection. Available in 9 languages.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui",
+    "browser"
+  ],
+  "orientation": "any",
+  "background_color": "#05060e",
+  "theme_color": "#05060e",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": [
+    "games",
+    "entertainment"
+  ],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/icon-48.png",
+      "sizes": "48x48",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/maskable-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/desktop-1-play.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "King Snake - Grow by eating orbs"
+    },
+    {
+      "src": "screenshots/desktop-2-grow.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "King Snake - Longer and thicker as you grow"
+    },
+    {
+      "src": "screenshots/desktop-3-leaderboard.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "King Snake - Climb the live leaderboard"
+    },
+    {
+      "src": "screenshots/desktop-4-menu.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "King Snake - Unlock 12 real snake species"
+    },
+    {
+      "src": "screenshots/mobile-1_play.png",
+      "sizes": "636x1048",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "King Snake - Grow by eating orbs"
+    },
+    {
+      "src": "screenshots/mobile-2_grow.png",
+      "sizes": "636x1048",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "King Snake - Longer and thicker as you grow"
+    },
+    {
+      "src": "screenshots/mobile-3_leaderboard.png",
+      "sizes": "636x1048",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "King Snake - Climb the live leaderboard"
+    },
+    {
+      "src": "screenshots/mobile-4_menu.png",
+      "sizes": "636x1048",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "King Snake - Unlock 12 real snake species"
+    }
+  ]
+}
