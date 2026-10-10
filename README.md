@@ -13,7 +13,6 @@ rival so it crashes into your coil, hold to boost by burning your own length.
 
 - **Fully offline.** A service worker precaches the entire build on first
   load, so the game runs with no network at all afterwards.
-- **No ads.** No ad SDK, no interstitials, no rewarded video.
 - **No sign-in.** No account, no email, no login of any kind.
 - **No data collection.** No analytics, no tracking, no telemetry. Nothing
   leaves the device; progress and settings stay in local storage.

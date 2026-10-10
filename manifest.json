@@ -2,7 +2,7 @@
   "id": "king-snake",
   "name": "King Snake",
   "short_name": "King Snake",
-  "description": "Grow the longest snake in the arena. Eat orbs, sprint to cut off rivals, and make others crash into your body. 28 AI opponents, 12 real snake species to unlock, and a live leaderboard. Single player and fully offline: no ads, no sign-in, no data collection. Available in 9 languages.",
+  "description": "Grow the longest snake in the arena. Eat orbs, sprint to cut off rivals, and make others crash into your body. 28 AI opponents, 12 real snake species to unlock, and a live leaderboard. Single player and fully offline: no sign-in, no data collection. Available in 9 languages.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
