@@ -1,0 +1,2508 @@
+/* styles.css - UI 셸.
+ *
+ * == 이 UI 가 놓인 조건 (설계의 전제) =======================================
+ *  장면: 새벽 1시, 어두운 방에서 든 폰. 유일한 광원은 «아레나 자체»다.
+ *        UI 는 그것과 경쟁하면 안 되고, 그 위에서 «반드시 읽혀야» 한다.
+ *
+ *  1) 배경이 «예측 불가»하다. 게임 캔버스 위에 얹히고, 그 밑에는 어떤 색의
+ *     뱀이든 지나갈 수 있다. => 텍스트는 «알려진 표면» 위에만 놓는다.
+ *     스크림으로 아레나를 눌러 보이게 두되, 글자가 얹히는 패널은 «불투명»으로
+ *     만든다. 이게 대비를 보장하는 유일한 방법이다.
+ *  2) 60fps 가 절대 조건이다. UI 는 게임 루프와 GPU 를 공유한다.
+ *     => backdrop-filter 를 «전부 제거»했다. 전면 오버레이의 backdrop-filter 는
+ *        매 프레임 아래 캔버스를 다시 읽어 블러한다 - 애니메이션 중인 캔버스
+ *        위에서는 가장 비싼 연산이다. 유리 효과는 여기서 사치가 아니라 결함이다.
+ *  3) 모바일 세로가 주 타깃. 터치 타깃 44x44 이상.
+ *  4) 미니맵/리더보드는 «항상» 떠 있다. 작고 정확하고 읽히는 것이 예쁜 것보다 우선.
+ *
+ * == 색 전략: 차가운 잉크 + 신호 하나 ======================================
+ *  «절제»라는 전략은 그대로다 — 아레나가 이미 온갖 색이라 표면은 조용해야 한다.
+ *  바뀐 것은 두 가지다(2026-08-28, President: 「그 특유의 갈색이 안 이쁘다」).
+ *
+ *  1) 표면이 «중성 회색»에서 «차가운 잉크»로 바뀌었다.
+ *     #1f1f21 계열의 순수 무채색은 남색 아레나 위에 얹히면 이 게임의 것이
+ *     아닌 «남의 OS 대화상자»처럼 뜬다. 아주 낮은 채도의 청색 편향을 넣으면
+ *     같은 조용함을 유지하면서 화면이 하나로 붙는다.
+ *
+ *  2) 역할을 «두 색»으로 갈랐다. 예전에는 앰버 하나가 「주요 동작」과
+ *     「나 자신」을 겸했다. 그래서 큰 버튼이 통째로 베이지 판이 되어
+ *     — 저채도 고명도 웜톤(#ffc98d)은 큰 면적에서 «갈색·살구색»으로 읽힌다 —
+ *     화면에서 가장 눈에 띄는 것이 가장 예쁘지 않은 것이 됐다.
+ *       --primary  차가운 흰색 : «행동». 시작·다시 하기·계속.
+ *                  큰 면적을 채워도 배경과 싸우지 않는 유일한 색이다.
+ *       --signal   신호 앰버   : «나». 내 순위·신기록·선택한 스킨·질주.
+ *                  면적을 «작게» 쓴다 — 신호는 작을수록 신호다.
+ *     같은 앰버라도 채도를 올리면(#ffb43c) 베이지가 아니라 «금색»으로 읽힌다.
+ *     브랜드(아이콘·기본 스킨 옥수수뱀)와의 연결은 그래서 끊기지 않는다.
+ *
+ * == OKLCH 와 구형 WebView ==================================================
+ *  토큰을 OKLCH 로 «저작»하되 기본값은 sRGB 로 둔다.
+ *  이 게임은 앱스인토스(RN 0.72.6 WebView)와 MS Store(구형 Edge) 양쪽에 올라간다.
+ *  그 런타임들은 oklch() 를 모른다 - 그대로 쓰면 색 선언이 통째로 무효가 되어
+ *  «글자가 안 보이는 화면»이 뜬다. @supports 로 갈라 두면 최신 브라우저는
+ *  OKLCH 로, 구형은 sRGB 근사로 «둘 다» 올바르게 렌더된다.
+ *  (sRGB 값은 각 OKLCH 를 변환한 근사치다. 임의로 고른 값이 아니다.)
+ *
+ * == 캔버스 vs DOM 경계 =====================================================
+ *  「매 프레임 움직이는가」 -> 캔버스(조이스틱/미니맵/뱀).
+ *  「글자/입력인가」        -> DOM(메뉴/HUD 수치/버튼).
+ *
+ * 웹폰트를 로드하지 않는다. 외부 네트워크 요청 0건이 스토어 제출 요건이다.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* -- 표면 (무채색) ------------------------------------------------- */
+  /* 0.84 는 «측정»으로 정해진 값이다. 0.74 일 때 화면이 순백에 가까워지면
+     (오브 블룸이 몰린 자리) 태그라인/사유 문구가 4.40:1 로 떨어졌다.
+     0.84 면 최악 배경에서도 6.2:1 을 넘는다. tools/contrast.mjs 참조. */
+  --scrim: rgba(4, 6, 13, 0.9);
+  /* ★ 가장자리 스크림. 중앙보다 «옅다» - 이유는 두 가지다:
+     1) 글자는 전부 중앙(패널·워드마크)에 있다. 중앙을 더 눌러야 대비가 산다.
+     2) 아레나는 «가장자리»에서만 보이게 된다 - 타이틀 화면이 「검은 판」이
+        아니라 「게임이 돌아가는 곳 위에 얹힌 메뉴」로 읽힌다.
+     즉 대비를 «올리면서» 배경을 «보여주는» 방향이다(반대급부가 없다). */
+  --scrim-edge: rgba(4, 6, 13, 0.62);
+  --surface: #161a24;
+  --surface-2: #212736;
+  --surface-3: #2e3547;
+
+  /* -- 잉크 ----------------------------------------------------------- */
+  --ink: #f4f6fa;
+  --muted: #aeb6c6;
+  --faint: #868fa2;
+
+  --line: #3b4356;
+  /* 1.23:1 이던 원래 값(#2f2f33)은 패널 위에서 사실상 «안 보이는 선»이었다.
+     구분선이 안 보이면 구분이 안 된다. 1.4:1 이상으로 올렸다.
+     (#333a4a = surface 위 1.54:1 — tools/contrast.mjs 로 확인) */
+  --line-soft: #333a4a;
+
+  /* -- 행동: 차가운 흰색 ----------------------------------------------
+     ★ 큰 버튼을 «유채색»으로 채우지 않는다. 아레나 배경이 매 순간 바뀌므로
+       어떤 색을 골라도 어떤 순간에는 배경과 싸운다. 흰색만이 어디서나 이긴다.
+       on-primary 대비 16.8:1 (실측 계산, WCAG AAA 여유). */
+  --primary: #eaeff8;
+  --primary-hi: #ffffff;
+  --primary-dim: #7d879c;
+  --on-primary: #0a0d16;
+
+  /* -- 신호: 「나」 ----------------------------------------------------
+     내 순위 · 신기록 · 선택한 스킨 · 질주. 작게만 쓴다.
+     surface 위 텍스트 대비 9.8:1 / on-signal 과 10.4:1. */
+  --signal: #ffb43c;
+  --on-signal: #1a1206;
+
+  --accent: #5ad0c0;
+  /* accent 위에 얹는 글자색. 15px 원 안의 'i' 하나에 쓴다 — accent 대비 10.6:1. */
+  --on-accent: #06211d;
+  --danger: #ff7a86;
+
+  /* -- 리워드 광고 제안의 테두리 (2026-08-31) --------------------------
+     ★ 리터럴로 흩뿌리지 않고 토큰으로 올린다. 세 값 전부 위 토큰의 «알파 변형»이고
+       그 사실이 이름에 드러나야 한다. 알파를 쓰는 이유는 큰 면적을 유채색으로
+       채우지 않기 위해서다(이 파일 머리말 2번) - 선만 물들인다.
+     ★ color-mix() 를 쓰지 않는다. 앱스인토스(RN 0.72.6 WebView)·구형 Edge 가
+       모르는 함수라 선언이 통째로 무효가 된다(OKLCH 와 같은 이유). */
+  --reward-edge: rgba(255, 180, 60, 0.36);      /* = signal @36% */
+  --reward-edge-hi: rgba(255, 180, 60, 0.62);   /* = signal @62% (hover) */
+  --reward-edge-ad: rgba(255, 180, 60, 0.5);    /* = signal @50% (잠긴 스킨 카드) */
+  --reward-edge-done: rgba(90, 208, 192, 0.44); /* = accent @44% (이미 받음) */
+  /* 최고급 스킨 «특수 기능» 표식·테두리 (2026-09-02 ②). accent 의 알파 변형이다.
+     ★새 색을 만들지 않았다 — --accent 하나가 「능력」이라는 뜻을 계속 들고 있어야
+       카드의 점 · 히어로의 줄 · 패널의 제목이 «한 가지 이야기»로 읽힌다. */
+  --skin-edge-info: rgba(90, 208, 192, 0.38);   /* = accent @38% */
+
+  /* -- HUD: 판 없는 글자 ------------------------------------------------
+     글자마다 두르는 1px 어두운 윤곽. blur 0(8방향 하드 오프셋)이라 합성 비용이
+     그림자 blur 와 다르다 - 글자가 바뀔 때(8Hz)만 다시 래스터된다.
+     --hud-edge 는 윤곽색이자 «대비 계산의 배경»이다(tools/contrast.mjs). */
+  --hud-edge: #04060d;
+  --hud-outline: 1px 0 0 var(--hud-edge), -1px 0 0 var(--hud-edge),
+    0 1px 0 var(--hud-edge), 0 -1px 0 var(--hud-edge),
+    1px 1px 0 var(--hud-edge), -1px -1px 0 var(--hud-edge),
+    1px -1px 0 var(--hud-edge), -1px 1px 0 var(--hud-edge);
+  /* 상단 띠 스크림(글자가 놓이는 자리만 한 단 누른다)과 버튼 받침. */
+  --hud-scrim: rgba(4, 6, 13, 0.55);
+  --hud-plate: rgba(4, 6, 13, 0.74);
+  /* ★같은 판인데 «글자를 얹는» 쪽(2026-09-03). --hud-plate 의 알파 변형이지
+     새 색이 아니다. 일시정지 버튼은 글자가 없어서 .74 로 충분했지만, 배너는
+     본문·부제가 올라가므로 아레나 색이 비쳐 들면 대비가 순간마다 흔들린다.
+     .93 = 아레나가 무슨 색이어도 글자 대비가 «고정»되는 선(실측 8.5:1 이상). */
+  --hud-plate-solid: rgba(4, 6, 13, 0.93);
+
+  /* -- 간격 스케일 (4px 기반) ----------------------------------------- */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+
+  /* ★ 반경을 «세 단»으로 벌린다. 전에는 카드·버튼·입력이 전부 14px 이라
+     서로 다른 층위가 한 덩어리로 읽혔다(모든 모서리가 같은 곡률인 화면은
+     자동 생성물의 대표적인 인상이다). 담는 것(--r-l)이 담기는 것(--r-m)보다
+     크고, 안의 작은 조각(--r-s)이 가장 작다 — 중첩이 곡률로 읽힌다. */
+  --r-s: 7px;
+  --r-m: 11px;
+  --r-l: 16px;
+  --r-pill: 999px;
+
+  /* -- z-index: 의미 스케일. 999 같은 임의값을 쓰지 않는다 ------------- */
+  --z-canvas: 0;
+  --z-hud: 10;
+  --z-overlay: 20;
+
+  /* -- 모션: ease-out 계열만. 바운스/엘라스틱 금지 -------------------- */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-slow: 260ms;
+
+  /* 안전영역 */
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+
+  /* 한 가족을 여러 굵기로 쓴다(제품 UI 원칙). 서로 다른 산세리프를 섞지 않는다. */
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans KR', 'Malgun Gothic',
+    'Apple SD Gothic Neo', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', Meiryo, Arial, sans-serif;
+}
+
+@supports (color: oklch(0.5 0.1 40)) {
+  :root {
+    --scrim: oklch(0.08 0.012 264 / 0.9);
+    --scrim-edge: oklch(0.08 0.012 264 / 0.62);
+    --surface: oklch(0.225 0.018 264);
+    --surface-2: oklch(0.29 0.024 264);
+    --surface-3: oklch(0.36 0.028 264);
+
+    --ink: oklch(0.972 0.005 260);
+    --muted: oklch(0.765 0.022 260);
+    --faint: oklch(0.63 0.026 262);
+
+    --line: oklch(0.395 0.03 264);
+    --line-soft: oklch(0.355 0.028 264);
+
+    --primary: oklch(0.945 0.011 256);
+    --primary-hi: oklch(1 0 0);
+    --primary-dim: oklch(0.6 0.03 262);
+    --on-primary: oklch(0.13 0.018 264);
+    --signal: oklch(0.815 0.155 70);
+    --on-signal: oklch(0.175 0.026 68);
+    --accent: oklch(0.78 0.09 178);
+    --on-accent: oklch(0.2 0.03 176);
+    --danger: oklch(0.72 0.16 18);
+  }
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #04060d;
+  color: var(--ink);
+  font-family: var(--font);
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  /* ════════════════════════════════════════════════════════════════════
+     ★★ 2026-09-07 실사고 — 조종스틱이 아이폰에서 안 먹었다.
+
+     여기가 «비어 있었다». touch-action:none 이 #stage 에만 걸려 있었는데,
+     iOS WKWebView(+ RN 호스트 스크롤뷰)는 자식 요소의 touch-action 만으로는
+     제스처를 놓아 주지 않는 경우가 있다. 몇 px 팬이 먹히는 순간 네이티브가
+     제스처를 가져가고 브라우저는 pointercancel 을 보낸다 = 조종이 끊긴다.
+
+     같은 플랫폼에서 «되는» 땅따먹기는 body 에 이 값을 건다
+     (territory-clash menu.css:63 주석: 「body 의 touch-action:none 을 이
+      스크롤 영역에서만 세로 팬으로 되연다」). 같은 수준으로 맞춘다.
+     ⇒ 스크롤이 «필요한» 영역만 아래에서 pan-y 로 되연다.
+     ════════════════════════════════════════════════════════════════════ */
+  touch-action: none;
+}
+
+/* ★ 위에서 전역으로 잠근 팬을 «스크롤이 실제로 필요한 곳»에서만 되연다.
+   되열지 않으면 메뉴·스킨 목록이 통째로 안 스크롤된다(그게 더 큰 고장이다). */
+#app {
+  touch-action: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* 없으면 드래그 조종이 브라우저 스크롤로 먹힌다. */
+  touch-action: none;
+  z-index: var(--z-canvas);
+}
+
+button {
+  font-family: inherit;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* 포커스 링: 어두운 표면 위에서도 보여야 한다. 링을 지우지 않는다. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ══ 오버레이 숨김을 display:none 에서 바꾸려던 시도 — «되돌렸다» (2026-09-04)
+ *
+ * 가설: 제스처가 진행 중인 요소가 display:none 이 되면 iOS WebKit 이 그 손가락의
+ *       touchmove/touchend 를 더 이상 보내지 않는다. showGame() 이 메뉴에
+ *       .hidden 을 걸므로, 시작 버튼을 누르거나 메뉴에 얹어 둔 엄지가 그 순간
+ *       유령이 된다 — 창·문서 어디에 리스너를 달아도 못 잡는다.
+ *
+ * 시도: .overlay.hidden / #hud.hidden 만 골라 visibility:hidden + pointer-events:none
+ *       으로 바꿔 상자를 «남겼다»(전역 .hidden 은 건드리지 않았다 — 그 클래스는
+ *       리더보드 줄·배지·통계·버튼 등 «흐름 안» 요소에도 붙어서, 거기서
+ *       display:none 을 없애면 빈 구멍이 남는다).
+ *
+ * 왜 되돌렸나 — 두 가지가 겹쳤다.
+ *   ① «검증할 수 없다». Playwright WebKit 은 tap() 만 지원해 「손가락을 든 채
+ *      미는」 제스처를 못 만들고 CDP 는 Chromium 전용이다. 즉 이 가설이 참인지
+ *      거짓인지 우리 도구로는 확인이 안 된다.
+ *   ② «부작용이 실제로 관측됐다». visibility:hidden 은 상자를 남기므로 숨긴
+ *      오버레이가 getClientRects()/getBoundingClientRect() 에서 «0 아닌 크기»를
+ *      낸다. 「크기가 0 이면 안 보이는 것」이라는 흔한 가정이 전부 깨진다.
+ *      실측: 하네스가 100/100 NO_START(게임은 정상 — 판정만 깨졌다).
+ *      운영 코드에도 같은 형태가 있다: banner/menuBanner.ts 의 childH() 가
+ *      광고 판 높이를 rect 로 재고 그 값으로 expand/collapse 를 정한다.
+ *      광고 경로를 «검증도 못 하는 가설» 때문에 흔들 수는 없다.
+ *
+ * ⇒ 검증 수단이 생기기 전에는 이 방향으로 가지 마라. 같은 화면에서 «실제로
+ *   재현된» 고장은 따로 있었고(시작 버튼을 누른 손가락이 조종으로 채택되던 것),
+ *   그건 input.ts 의 uiTouches 로 고쳤다. 실측 100% → 0%.
+ * ════════════════════════════════════════════════════════════════════════ */
+
+
+/* == 오버레이 =============================================================
+   backdrop-filter 없음(조건 2). 스크림만으로 아레나를 눌러 둔다. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  /* align-items:center + overflow 조합은 «위쪽이 잘린다»(스크롤 상한이 0).
+     실제로 1600x900 에서 타이틀이 잘렸다. flex-start + margin:auto 가
+     「들어가면 중앙, 넘치면 위부터」를 준다. */
+  align-items: flex-start;
+  justify-content: center;
+  padding: calc(var(--s4) + var(--sat)) calc(var(--s4) + var(--sar))
+    calc(var(--s5) + var(--sab)) calc(var(--s4) + var(--sal));
+  /* ★ 단색이 아니라 «중앙이 짙은» 방사 스크림.
+     backdrop-filter 가 아니라 그냥 그라디언트라 비용은 0 이다(합성 한 장). */
+  background: radial-gradient(ellipse 78% 66% at 50% 44%, var(--scrim) 38%, var(--scrim-edge) 100%);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* ★ body 의 touch-action:none 을 «이 영역에서만» 세로 팬으로 되연다.
+     안 되열면 메뉴가 스크롤되지 않는다. 가로는 여전히 잠겨 있어 조종
+     제스처가 브라우저 스크롤로 새지 않는다. */
+  touch-action: pan-y;
+}
+
+.col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.panel {
+  margin: auto;
+  width: min(400px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  animation: rise var(--t-slow) var(--ease-out-quart) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* == 워드마크 =============================================================
+   그라디언트 텍스트를 쓰지 않는다. 단색 + 굵기/크기로만 위계를 만든다.
+   브랜드의 목소리는 옆에 «실제 게임 렌더러»로 그린 코일 마크가 낸다 -
+   손으로 깎은 장식 SVG 가 아니라 게임 안에서 쓰는 바로 그 코드다. */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s1);
+}
+
+.brand-mark {
+  /* ★ 정사각형이 아니다. 마크가 «S 자 뱀»이라 가로가 길어야 형태가 산다
+     (정사각 안에 넣으면 다시 똬리로 감아야 하고 - 그게 도넛의 원인이었다). */
+  width: 84px;
+  height: 58px;
+  flex: none;
+  display: block;
+}
+
+/* ★ 안쪽 캔버스는 «내재 해상도»(116px)로 그려진다. CSS 크기를 안 주면
+   그대로 116px 로 펼쳐져 부모 밖으로 넘친다. 실제로 그렇게 나왔다
+   (qa_ui.py overflow 검사에서 116>58 로 검출).
+   2배 해상도로 그리고 CSS 로 줄이는 것이 «선명함»의 근거이므로
+   해상도를 낮추는 대신 CSS 크기를 명시한다. */
+.brand-mark canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.brand-text {
+  min-width: 0;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.brand p {
+  margin: var(--s1) 0 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* == 블록 =================================================================
+   카드는 게으른 답이다. 묶임이 실제로 필요한 곳에만 쓰고 중첩하지 않는다. */
+
+.block {
+  /* 같은 이유로 자동 최소폭을 끊는다(내부 가로 스크롤 요소 보호). */
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-l);
+  padding: var(--s4);
+}
+
+/* 「작은 대문자 + 넓은 자간」 라벨(eyebrow)을 쓰지 않는다.
+   문장 대소문자, 보통 자간, 읽히는 크기. */
+.block-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: var(--s3);
+}
+
+/* == 입력 ================================================================= */
+
+.nick {
+  width: 100%;
+  height: 50px;
+  border-radius: var(--r-m);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  /* iOS 는 16px 미만 입력에 자동 확대를 건다. */
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--t-base) var(--ease-out-quart),
+    background var(--t-base) var(--ease-out-quart);
+}
+
+.nick::placeholder {
+  /* 플레이스홀더도 본문과 같은 대비를 맞춘다. 흔한 실패 지점이다. */
+  color: var(--faint);
+  font-weight: 500;
+}
+
+.nick:hover {
+  border-color: var(--surface-3);
+}
+
+.nick:focus {
+  border-color: var(--primary-dim);
+  background: var(--surface-2);
+}
+
+/* == 버튼 =================================================================
+   모든 상호작용 요소가 default/hover/focus/active/disabled 를 갖는다. */
+
+.btn {
+  min-height: 52px;
+  padding: 0 var(--s4);
+  border-radius: var(--r-m);
+  font-size: 16.5px;
+  font-weight: 700;
+  /* 자간을 «조금» 조인다. 굵은 산세리프는 기본 자간에서 헐거워 보이고,
+     그 헐거움이 「기본값 그대로」라는 인상을 만든다. */
+  letter-spacing: -0.012em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--t-fast) var(--ease-out-quart),
+    background var(--t-base) var(--ease-out-quart),
+    border-color var(--t-base) var(--ease-out-quart);
+}
+
+.btn:active {
+  transform: scale(0.985);
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.btn-primary:hover {
+  background: var(--primary-hi);
+}
+
+.btn-ghost {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 15px;
+  min-height: 48px;
+}
+
+.btn-ghost:hover {
+  background: var(--surface-2);
+  border-color: var(--surface-3);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+
+.btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s2);
+}
+
+/* == 스킨 선택 ============================================================
+   「같은 크기 카드 격자」를 쓰지 않는다. 선택된 스킨을 크게 보여주고
+   그 아래 작은 스와치 레일을 가로로 둔다. 크기가 다르므로 격자 반복이
+   아니고, 「무엇이 선택됐는지」도 즉시 읽힌다. */
+
+.skin-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  margin-bottom: var(--s3);
+}
+
+.skin-hero canvas {
+  width: 112px;
+  height: 76px;
+  flex: none;
+  display: block;
+}
+
+.skin-hero-meta {
+  min-width: 0;
+}
+
+.skin-hero-name {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.skin-hero-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: var(--s1);
+  line-height: 1.35;
+}
+
+.skin-rail {
+  display: flex;
+  gap: var(--s2);
+  overflow-x: auto;
+  /* ★ 스킨 레일은 «가로»로 스크롤한다 — body 잠금을 가로로만 되연다. */
+  touch-action: pan-x;
+  padding: 2px 0 var(--s1);
+  scroll-snap-type: x proximity;
+  /* 스크롤바를 새로 만들지 않는다(표준 어포던스 재발명 금지). 숨기기만 한다. */
+  scrollbar-width: none;
+}
+
+.skin-rail::-webkit-scrollbar {
+  display: none;
+}
+
+/* 오른쪽 끝을 «페이드»시켜 「더 있다」를 알린다. 스크롤 힌트가 없으면
+   유저는 12종 중 앞 7종만 있는 줄 안다. 마스크는 이 작은 요소에만 걸리므로
+   전면 블러와 달리 비용이 사실상 없다. */
+@supports (mask-image: linear-gradient(90deg, #000, transparent)) {
+  .skin-rail {
+    mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 28px), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 28px), transparent 100%);
+  }
+}
+
+.skin {
+  position: relative;
+  flex: none;
+  /* ★ 46x46 원형이던 것을 64x48 가로판으로 바꿨다. 원형 스와치는 그 안에
+     «고리»밖에 못 담는다 - 12종이 전부 같아 보이던 근본 원인이 이 형태였다.
+     터치 타깃 44x44 요건은 그대로 만족한다(64>=44, 48>=44). */
+  width: 72px;
+  height: 48px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: center;
+  transition: border-color var(--t-base) var(--ease-out-quart),
+    background var(--t-base) var(--ease-out-quart);
+}
+
+.skin canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  display: block;
+}
+
+.skin:hover:not([disabled]) {
+  background: var(--surface-3);
+}
+
+.skin[aria-pressed='true'] {
+  border-color: var(--signal);
+}
+
+.skin[disabled] {
+  cursor: default;
+}
+
+.skin[disabled] canvas {
+  opacity: 0.26;
+}
+
+.skin .lock {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* == 레일 카드 밑 «종 이름» (2026-09-02 ①) ================================
+   President: 「미보유 스킨 이름·획득요건 표시」.
+   요건(숫자)은 카드 «안»에 이미 있다(.lock). 없던 것은 «이름»이라 그것만 더한다 —
+   같은 정보를 두 번 적으면 카드가 두 배로 시끄러워지고, 레일은 가로 스크롤이라
+   세로 높이가 곧 비용이다. */
+
+.skin-cell {
+  flex: none;
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  scroll-snap-align: center;
+}
+
+/* 스크롤 스냅은 이제 «칸»이 든다. 카드에 남겨 두면 스냅이 이름 줄을 잘라 먹는다. */
+.skin-cell .skin {
+  scroll-snap-align: none;
+}
+
+.skin-cap {
+  /* ⭐로케일마다 이름 길이가 다르다(「파란말레이산호뱀」 8자 / "Blue Malayan Coral
+     Snake" 24자). 고정 높이를 «가정하지 않는다» — 두 줄까지 허용하고 그 뒤로만 자른다. */
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  /* 공백 없는 긴 종명이 칸을 밀어내지 않게. */
+  overflow-wrap: anywhere;
+}
+
+/* 잠긴 것은 «한 단 더» 눌러 둔다. 그림(opacity .26)과 위계를 맞춘다. */
+.skin-cap.is-locked {
+  color: var(--faint);
+}
+
+/* == 히어로 «특수 기능» 줄 = 이제 «버튼» (2026-09-02 ②) ===================
+   ① 에서 만든 「작게 한 줄」은 문구 그대로 둔다(President: 터치는 «더 자세히»의
+   경로다). 바뀐 것은 그 줄이 «눌리는 물건»이 됐다는 것 하나다.
+
+   ★어포던스를 «보이는 사각형»으로 만든다. 투명 패딩으로 탭 영역만 키우면
+     「여기가 눌리는 줄 몰랐다」가 그대로 남는다 — 그게 이 지시가 나온 이유다.
+     받침(--surface-2)은 카드(--surface) 위로 «한 단» 올라온 표면이고 반경도
+     한 단 작다(--r-s < --r-l). 이 파일의 중첩 규율 그대로다.
+   ★터치 타깃: 12px x 1.35 + 위아래 6px = 22.2px 이라 min-height 로 24px 를
+     «보장»한다(WCAG 2.2 AA Web 24px). 보이는 판이 곧 그 24px 다. */
+
+.skin-ability {
+  display: block;
+  width: 100%;
+  margin-top: var(--s2);
+  padding: 6px 8px;
+  min-height: 24px;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-s);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition: background var(--t-base) var(--ease-out-quart),
+    border-color var(--t-base) var(--ease-out-quart);
+}
+
+/* * <<display:block 이 hidden 을 이긴다>>. div 였을 때는 author display 가 없어서
+   UA 의 [hidden]{display:none} 이 그대로 먹었는데, 버튼으로 바꾸며 display 를
+   선언하는 순간 능력 없는 스킨에서 <<빈 칩>>이 떴다(실렌더에서 발견 - 코드만
+   읽었으면 못 잡는다). 숨김을 명시로 되돌린다. */
+.skin-ability[hidden] {
+  display: none;
+}
+
+.skin-ability:hover {
+  background: var(--surface-3);
+}
+
+.skin-ability[aria-expanded='true'] {
+  border-color: var(--skin-edge-info);
+}
+
+/* 「자세히 ›」 — 문장 «끝에» 흘려 넣는다(inline). 고정 칸에 넣으면
+   Podrobnee · Freischalten 같은 긴 로케일에서 칸이 터지거나 글자가 잘린다. */
+.skin-ability-more {
+  margin-left: 6px;
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.skin-ability-more::after {
+  content: ' \203A';
+}
+
+/* -- 레일 카드의 「누르면 설명이 열린다」 표식 -----------------------------
+   ★.skin-ad 와 «같은 규율»이다: 표식일 뿐 별도 타깃이 아니다
+     (pointer-events:none). 누르는 사각형은 카드 전체 72x48 이다.
+   ★자리가 «오른쪽 아래»인 이유 셋:
+     ① 잠금 숫자(.lock)는 카드 세로 «한가운데»에 온다 — 가운데 띠를 피해야 한다.
+     ② 머리·눈은 오른쪽 «위»다(미리보기는 왼쪽아래→오른쪽위 대각선).
+     ③ 왼쪽 위는 광고 배지가 쓴다. 두 표식이 같은 열에 서면 한 덩어리로 읽힌다.
+     남는 자리는 오른쪽 아래 하나뿐이다. */
+
+.skin-info {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 15px;
+  height: 15px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  /* 뱀 그림 위에 얹히므로 어두운 테로 «떼어낸다»(.skin-ad 와 같은 값). */
+  box-shadow: 0 0 0 2px var(--surface-2);
+  pointer-events: none;
+}
+
+.skin-info::before {
+  content: 'i';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--on-accent);
+}
+
+/* 설명이 열리는 카드는 «잠긴 채로» 청록 테를 두른다.
+   ★그림은 [disabled] 와 «같은» 0.26 으로 눌러 둔다 — 이 카드는 여전히
+     «고를 수 없다». 밝히면 「열렸다」로 오해된다(광고 카드 0.44 와 다른 이유).
+     [disabled] 가 풀렸으니 이 규칙이 없으면 그림이 1.0 으로 튄다. */
+.skin.is-info canvas {
+  opacity: 0.26;
+}
+
+.skin.is-info {
+  border-color: var(--skin-edge-info);
+  cursor: pointer;
+}
+
+/* == 「자세히」 패널 (2026-09-02 ②) =======================================
+   레일 «바로 밑». 모달·바텀시트가 «아니다» — 이유는 shell.ts 조립부 주석 참조
+   (전면 시트를 하나 더 띄우면 움직이는 캔버스 위에 스크림이 한 겹 더 깔린다).
+
+   ★카드(.block · --surface · --r-l) 안에 «한 단 올라온» 표면이다:
+     배경 --surface-2 · 반경 --r-m(카드보다 작다) · 선 --line-soft.
+     새 색을 만들지 않는다 — 이 화면이 이미 쓰는 값만 쓴다. */
+
+.skin-detail {
+  margin-top: var(--s3);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-m);
+  padding: var(--s3);
+  animation: rise var(--t-base) var(--ease-out-quart) both;
+}
+
+.skin-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+.skin-detail-names {
+  min-width: 0;
+}
+
+.skin-detail-name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.skin-detail-ab {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+/* 닫기. 26x26 «보이는» 판이다(WCAG 2.2 AA Web 24px 이상).
+   X 는 두 막대로 그린다 — 글리프를 쓰면 폰트마다 굵기·중심이 달라진다
+   (웹폰트 0건 원칙이라 어떤 폰트가 올지 우리가 모른다). */
+.skin-detail-x {
+  flex: none;
+  position: relative;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  cursor: pointer;
+  transition: background var(--t-base) var(--ease-out-quart);
+}
+
+.skin-detail-x:hover {
+  background: var(--line);
+}
+
+.skin-detail-x::before,
+.skin-detail-x::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 11px;
+  height: 2px;
+  margin: -1px 0 0 -5.5px;
+  border-radius: 1px;
+  background: var(--muted);
+}
+
+.skin-detail-x::before {
+  transform: rotate(45deg);
+}
+
+.skin-detail-x::after {
+  transform: rotate(-45deg);
+}
+
+.skin-detail-lead {
+  margin: var(--s2) 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* 라벨-값 «행». 기록 카드(.kv-row)와 «같은 문법»이다 — 한 화면에서 두 번째
+   문법을 만들지 않는다. 크기만 한 단 작다(여긴 카드 «안»의 카드다). */
+.skin-detail-rows {
+  margin: var(--s2) 0 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.skin-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: 6px 0;
+}
+
+.skin-detail-row + .skin-detail-row {
+  border-top: 1px solid var(--line-soft);
+}
+
+.skin-detail-k {
+  flex: none;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* ⭐값은 «오른쪽»으로 몬다. 로케일마다 라벨 길이가 다르다(획득 2자 /
+   Freischalten 12자). 라벨 폭을 고정하면 반드시 어딘가 깨진다 —
+   양끝 정렬은 그 가정을 «안 한다». 길면 줄바꿈해서 오른쪽으로 쌓인다. */
+.skin-detail-v {
+  margin: 0;
+  min-width: 0;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.skin-detail-fair {
+  margin: var(--s2) 0 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+
+/* == 시작 화면 배너 지면(2026-09-02) — 2026-09-10 «제거» ====================
+   콘솔 실측 노출 0회(전 기간). Codex 전략 「0회 배너는 수리하지 않고 삭제」.
+   .ad-slot 3규칙과 src/banner/ 를 함께 지웠다. 그 자리(기록 카드 ↔ 설정 카드 사이)에는
+   «토스 안에서만» 아래 푸시 안내 카드(.nudge)가 선다 — 붙고 떼는 것은 shell.refreshPush 가 하고,
+   DOM 에 없을 때는 .col 의 gap 12px 만 남아 «설치 전과 같다»(빈 래퍼 0). */
+
+/* == 토스 전용 조각 (2026-09-10 레인 A) ====================================
+   ① 푸시 알림 «안내 카드»(.nudge — 메뉴, 기록 ↔ 설정 사이)
+   ② 「알림」 행 + 힌트(.push-group — 설정 블록 마지막)
+   ③ 「머니 리그」 교차추천(.xpromo — 결과 화면, 다시 하기 행 아래)
+   셋 다 «토스 안에서만» DOM 에 붙는다. 규율은 이 파일 머리말 그대로:
+   ★ 새 색 0 — 전부 위 토큰의 조합. 카드는 .block(--surface · --line-soft · --r-l)의 리듬을 그대로 쓴다.
+   ★ backdrop-filter·blur·그림자 0. 아레나가 뒤에서 돌아간다.
+   ★ 누르는 것은 전부 44px 이상(tools/qa_ui.py 가 44 미만을 FAIL 로 잡는다). «보이는 사각형 = 누르는 사각형».
+   ★ 로케일마다 길이가 다르다 — 고정폭 가정 0, 줄바꿈 허용(word-break: keep-all). */
+
+.nudge,
+.xpromo {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  /* 오른쪽은 44px 아이콘 버튼이 «자기 여백»을 들고 있어(.icon-x 의 음수 마진) 12 로 줄인다. */
+  padding: var(--s3) var(--s3) var(--s3) var(--s4);
+}
+
+/* ★안내 카드에 아이콘 칩을 «두지 않는다». 375px 에서 36px 칩을 빼면 글 폭이 143px 로 줄어 부제가
+   3줄로 접히고 카드가 95px 을 넘는다(실측 계산). 제목이 뜻을 들고 있으니 공간은 글에 준다. */
+
+.nudge-text,
+.xpromo-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nudge-title,
+.xpromo-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  line-height: 1.25;
+  color: var(--ink);
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.nudge-sub,
+.xpromo-sub {
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--muted); /* surface 위 7.9:1 (tools/contrast.mjs) */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+/* 「받기」·「열기」 — 세그먼트 버튼과 같은 어법(알약·surface-2·잉크). .btn-primary 를 쓰지 않는다:
+   시작·다시 하기가 이미 그 색이고, 검사기들이 «문서 첫 .btn-primary» 를 집는다(shell.ts 주석). */
+.nudge-cta,
+.xpromo-open {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 62px;
+  padding: 0 var(--s4);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  white-space: nowrap;
+  transition: background var(--t-base) var(--ease-out-quart),
+    border-color var(--t-base) var(--ease-out-quart),
+    transform var(--t-fast) var(--ease-out-quart);
+}
+
+.nudge-cta:hover:not([disabled]),
+.xpromo-open:hover {
+  background: var(--surface-3);
+  border-color: var(--line);
+}
+
+.nudge-cta:active:not([disabled]),
+.xpromo-open:active {
+  transform: scale(0.985);
+}
+
+.nudge-cta[disabled] {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.xpromo-open-i svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  color: var(--muted);
+}
+
+/* 닫기(X) — 44x44 원반. 잉크는 muted, 누르면 ink. 카드 오른쪽 12px 여백 안에서 6px 을 «자기 것»으로 삼아
+   시각적으로는 18px 아이콘이 카드 안쪽 선에 맞는다(보이는 사각형이 누르는 사각형보다 작지 않다 — 받침이 뜬다). */
+.icon-x {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-right: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--muted);
+  transition: background var(--t-base) var(--ease-out-quart), color var(--t-base) var(--ease-out-quart);
+}
+
+.icon-x svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.icon-x:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+/* 「알림」 행 — .row 의 밑줄·높이 규칙을 그대로 상속한다.
+   ★밑줄은 «그룹 밖»에서만 의미가 있다: 언어 행 밑에는 선이 그어져 알림 행과 갈리고(설정 블록의 마지막
+     자식이 이 그룹이라 언어 행은 더 이상 :last-child 가 아니다), 그룹 «안»의 알림 행에는 선이 없다 —
+     바로 아래 힌트 한 줄이 그 행의 «설명»이라 사이에 선을 그으면 남남으로 읽힌다(검사기 P1-h 가 잡았다). */
+.push-group {
+  min-width: 0;
+}
+
+.push-group .row {
+  border-bottom: 0;
+}
+
+.push-btn {
+  flex: none;
+  min-height: 44px;
+  min-width: 62px;
+  padding: 0 var(--s4);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--t-base) var(--ease-out-quart), color var(--t-base) var(--ease-out-quart);
+}
+
+.push-btn:hover:not([disabled]) {
+  background: var(--surface-3);
+}
+
+/* 켜짐 — «완료» 색(accent). 신기록·행동과 구분되는 세 번째 역할(styles.css 색 전략). 재탭은 alreadyAgreed 로 무해. */
+.push-btn.is-on {
+  color: var(--accent);
+}
+
+.push-btn[disabled] {
+  cursor: default;
+}
+
+.push-btn[aria-busy='true'] {
+  opacity: 0.62;
+}
+
+/* 행 아래 힌트 한 줄 — 「매일 저녁 8시 30분」과 「끄기는 토스 앱 알림 설정」이 여기 있다(거짓 스위치 대신 «말»). */
+.hint-line {
+  margin: var(--s2) 0 0;
+  padding: 0 0 var(--s1);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.hint-line.is-error,
+.xpromo-sub.is-error {
+  color: var(--danger); /* surface 위 6.4:1 (tools/contrast.mjs) */
+}
+
+/* 열기 대기 중 — 판은 그대로 두고 «글자만» 흐리게(.btn-reward[aria-busy] 와 같은 어법).
+   판이 사라지면 눌린 자리가 없어져 유저가 「눌리긴 한 건가」를 못 읽는다. */
+.xpromo-open[aria-busy='true'] {
+  opacity: 0.62;
+  cursor: default;
+}
+
+/* 교차추천 제목 옆 「추천」 태그 — 제목 «위» 라벨(eyebrow)이 아니라 «옆» 태그다. 소문자 그대로, 자간 확대 0. */
+.xpromo-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.xpromo-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  color: var(--faint); /* surface 위 5.0:1 (tools/contrast.mjs) */
+}
+
+/* == 기록 =================================================================
+   「큰 숫자 + 작은 라벨」 격자(hero-metric)를 쓰지 않는다.
+   라벨-값 «행»으로 읽는다. 스코어보드의 문법이지 대시보드가 아니다. */
+
+.kv {
+  display: flex;
+  flex-direction: column;
+}
+
+.kv-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+}
+
+.kv-row + .kv-row {
+  border-top: 1px solid var(--line-soft);
+}
+
+.kv-k {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.kv-v {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.kv-v.is-best {
+  color: var(--signal);
+}
+
+/* == 설정 행 ============================================================== */
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  min-height: 56px;
+}
+
+/* ★ «.row + .row { border-top }» 을 쓰지 않는다.
+   조작 방식 행은 터치 기기에서만 보이므로 데스크톱에서는 display:none 인데,
+   인접 선택자는 숨은 형제를 «건너뛰지 않아서» 첫 보이는 행 위에 유령 선이
+   그어졌다(모바일 실렌더에서 발견). 아래로 긋고 마지막만 지우면 항상 옳다. */
+.row {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.seg {
+  display: flex;
+  background: var(--surface-2);
+  border-radius: var(--r-pill);
+  padding: 3px;
+  gap: 2px;
+}
+
+.seg button {
+  /* 44 미만이면 손가락이 빗나간다. 자동 검사(tools/qa_ui.py)가
+     40px 로 잡아냈다 - 눈으로는 절대 안 보이는 결함이다. */
+  min-height: 44px;
+  min-width: 62px;
+  padding: 0 var(--s3);
+  border-radius: var(--r-pill);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--t-base) var(--ease-out-quart),
+    color var(--t-base) var(--ease-out-quart);
+}
+
+.seg button:hover {
+  color: var(--ink);
+}
+
+.seg button[aria-pressed='true'] {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+.lang-select {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  color: var(--ink);
+  border-radius: var(--r-pill);
+  min-height: 44px;
+  padding: 0 var(--s3);
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: inherit;
+  outline: none;
+}
+
+/* == 조작법 ===============================================================
+   ★ 이 블록은 «읽는 것»이라(앞의 두 블록은 «만지는 것») 한 단 조용해야 한다.
+     한 번은 배경을 통째로 지워 선 하나만 남겼는데 — 실렌더에서 즉시 틀렸다:
+     그 자리 뒤로 «아레나가 그대로 지나가서» 다섯 줄이 뱀·먹이 위에 얹혔다.
+     이 파일 맨 위 조건 1(「텍스트는 알려진 표면 위에만」)을 내가 어긴 것이다.
+     그래서 표면은 «불투명하게 유지»하고, 테두리만 뺀다. 대비는 협상 대상이
+     아니고, 층위 차이는 테두리 유무만으로도 읽힌다. */
+.p-how {
+  border-color: transparent;
+}
+
+.howto {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.howto li {
+  list-style: none;
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: var(--s2);
+  align-items: start;
+  /* ★ 한국어·중국어·일본어는 낱말 한가운데서 줄이 바뀔 수 있다.
+     keep-all 이면 어절 단위로만 끊긴다. 로케일마다 길이가 다르므로
+     「한 줄에 들어간다」를 가정하지 않고 «잘 접히게» 만든다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+/* 앞머리는 «색 점»이 아니라 얇은 눈금. 상태를 뜻하지 않는 색 점은 장식이고,
+   이 화면에서 장식 색 점은 상태 표시와 혼동된다. */
+.howto li::before {
+  content: '';
+  width: 10px;
+  height: 1px;
+  background: var(--surface-3);
+  margin-top: 10px;
+}
+
+/* ★ 위계 두 단.
+   처음 켠 사람이 3초 안에 알아야 하는 건 «내 손가락이 하는 일» 두 줄이다.
+   나머지 셋은 한 판만 하면 알게 되는 규칙이라 아래로 내려 조용히 둔다.
+   화면을 하나 더 끼우지 않고 «읽는 순서»만 만드는 방법이다.
+   색을 새로 들이지 않는다 - 위계는 굵기와 잉크 농도로 충분하다. */
+.howto li.is-do {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.howto li.is-do::before {
+  width: 12px;
+  background: var(--muted);
+  margin-top: 9px;
+}
+
+.howto li.is-rule-first {
+  border-top: 1px solid var(--line-soft);
+  padding-top: var(--s2);
+  margin-top: 2px;
+}
+
+.howto li.is-rule-first::before {
+  margin-top: calc(10px + var(--s2));
+}
+
+/* == HUD ==================================================================
+   4) 항상 떠 있다. 작게, 정확하게, 시야를 막지 않게.
+
+   ★ slither.io 기준 마감 (2026-08-29, President: 「slither.io 많이 참고해」).
+     원작의 HUD 는 «거의 없다» - 길이 한 줄, 우상단 순위표, 우하단 미니맵.
+     판·테두리·그림자·채운 줄이 하나도 없다. 글자가 아레나 위에 «바로» 놓인다.
+     우리 HUD 는 요소마다 불투명 판 + 1px 테두리를 두르고 있었다(점수판·순위표·
+     킬피드·일시정지 버튼 = 판 4장, 테두리 4줄). 같은 정보에 형태가 두 배였다.
+
+     덜어낸 것: 점수판·순위표·킬피드의 «판과 테두리» 전부, 내 순위줄의 «채움»,
+               일시정지 버튼의 테두리, 미니맵의 십자선·안쪽 링·짙은 원판.
+     남긴 것 : 글자·숫자·색. 위계는 굵기와 잉크 농도로만.
+
+   ★ 대비는 «배경을 가정하지 않고» 확보한다 - 이 파일 머리말 조건 1 은 그대로다.
+     판을 걷어낸 대신 글자마다 «1px 어두운 윤곽»(text-shadow 8방향, blur 0)을
+     두른다. 윤곽은 글자와 «함께 움직이는 알려진 표면»이라 밑에 무엇이 지나가도
+     글자-윤곽 대비는 변하지 않는다(ink/hud-edge 16:1 - tools/contrast.mjs).
+     캔버스 이름표(render/snakeRender.ts drawSnakeLabel)가 이미 같은 방식이다 -
+     DOM 과 캔버스가 «같은 규칙»을 쓰게 된 셈이다.
+     blur 는 0 이다. 흐린 그림자는 게임 루프와 GPU 를 나눠 쓰는 자리에서 쓰지 않는다.
+     여기에 상단 «스크림 한 장»(정적 선형 그라디언트, 합성 1회)을 더해 위쪽 글자가
+     놓이는 띠를 한 단 눌러 둔다 - 워드마크 밑 방사 스크림과 같은 원리다. */
+
+#hud {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-hud);
+  pointer-events: none;
+}
+
+#hud::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: calc(150px + var(--sat));
+  background: linear-gradient(180deg, var(--hud-scrim) 0%, rgba(4, 6, 13, 0) 100%);
+  pointer-events: none;
+}
+
+/* 실기기 진단 줄(「길이」 5연타로만 뜬다. 기본 OFF — shell.ts toggleLiveDiag). */
+.live-diag {
+  position: fixed;
+  left: calc(var(--s2) + var(--sal));
+  right: calc(var(--s2) + var(--sar));
+  bottom: calc(var(--s2) + var(--sab));
+  z-index: 9999;
+  pointer-events: none;
+  white-space: pre-line;
+  padding: 6px 8px;
+  border-radius: var(--r-s);
+  background: var(--hud-plate-solid);
+  color: var(--ink);
+  /* ★ 여기서만 등폭을 쓴다. 장식이 아니라 «계측값»이라서다 — 숫자 자리가 맞아야
+     President 가 폰 화면을 찍어 보낸 사진에서 값을 읽을 수 있다.
+     외부 폰트를 «절대» 안 받는다(스토어 요건: 네트워크 요청 0건). 시스템 등폭만. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace;
+  font-size: 10.5px;
+  letter-spacing: -0.2px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-score {
+  position: absolute;
+  top: calc(var(--s3) + var(--sat));
+  left: calc(var(--s4) + var(--sal));
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  text-shadow: var(--hud-outline);
+}
+
+/* 라벨-값을 «한 줄»로 읽는다. 값 밑에 작은 대문자 라벨을 다는 형식은
+   metric-card 의 문법이라 쓰지 않는다. */
+.hud-score div {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.hud-score span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.hud-score b {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ink);
+  display: inline-block;
+  transform-origin: left center;
+}
+
+/* 점수·순위 «펀치» — 킬·큰 먹이·순위 상승 때 1.18배로 튀었다 돌아온다(transform 만 — 레이아웃 무관). */
+.hud-score b.is-punch {
+  animation: punch 200ms var(--ease-out-quart) both;
+}
+
+@keyframes punch {
+  from {
+    transform: scale(1.18);
+  }
+}
+
+.hud-board {
+  position: absolute;
+  top: calc(var(--s3) + var(--sat));
+  right: calc(var(--s4) + var(--sar));
+  width: 156px;
+  text-shadow: var(--hud-outline);
+}
+
+.hud-board ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hud-board li {
+  display: grid;
+  grid-template-columns: 15px 1fr auto;
+  gap: var(--s1);
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.hud-board li i {
+  font-style: normal;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+.hud-board li u {
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-board li s {
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--faint);
+}
+
+/* 내 줄. ★ 채우지 않는다 - 채운 줄은 순위표에서 가장 큰 색 덩어리였다.
+   신호색 글자 + 어두운 윤곽이면 어느 배경에서든 «내 줄»이 먼저 잡힌다. */
+.hud-board li.me {
+  color: var(--signal);
+  font-weight: 800;
+}
+
+.hud-board li.me i,
+.hud-board li.me s,
+.hud-board li.me u {
+  color: var(--signal);
+}
+
+/* 왼쪽 열 = 킬 피드 «다음»에 기록 돌파 배너(2026-09-02).
+   ★ 배너의 y 를 상수로 «안 박는다». 예전엔 sat+210px 을 박았고, 그래서
+     ①순위표를 가리는 결함이 났고(09-01) ②실기기에서 아레나 한가운데를 막았다.
+     이제 자리는 «피드가 실제로 차지한 높이»에서 나온다 — 3줄이 되든 독일어로
+     접히든 배너가 그만큼 내려간다. 겹칠 상수가 없으니 겹칠 방법도 없다.
+   ★ 위치·폭은 이 컨테이너가 갖는다. .hud-feed 의 «화면 사각형»은 전과 동일하다
+     (width:100% 로 컨테이너를 그대로 채운다) — 기존 겹침 검사가 같은 것을 잰다. */
+.hud-left {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  /* ★ 일시정지 버튼도 상단 «가운데»에 있다. 같은 자리를 두 요소가 쓰면
+     겹친다 - 실제로 데스크톱에서 44x26 만큼 겹쳤다(qa_ui.py 좌표 실측).
+     피드는 그 아래로 내린다. 좁은 화면 규칙은 아래 미디어쿼리에서 다시 잡는다. */
+  top: calc(var(--sat) + 58px);
+  width: min(300px, 52vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* 피드 마지막 줄과 배너 사이. 카드 리듬(--s2=8px)보다 좁게 — 「피드에 딸린 것」으로 읽혀야 한다. */
+  gap: 6px;
+}
+
+.hud-feed {
+  /* ★ 크기의 «정본». .feed-item 은 이 변수를 쓴다 - 두 곳에서 따로 관리하면
+     아래 min-height 계산이 조용히 틀어진다. --feed-rows 는 ui/shell.ts FEED_MAX 다. */
+  --feed-fs: 12px;
+  --feed-gap: 2px;
+  --feed-rows: 3;
+  --feed-line: calc(var(--feed-fs) * 1.35 + 2px); /* 글자 + .feed-item padding 1px x 2 */
+  display: flex;
+  flex-direction: column;
+  gap: var(--feed-gap);
+  align-items: center;
+  width: 100%;
+  /* ★★ 「3줄 자리」를 «미리 비워 둔다». 미관이 아니라 «탭 타깃이 안 움직이게»다.
+     킬은 세계 전체에서 난다(world.ts onKill = 봇 90마리 전부). 실측(tools/
+     hud_feed_churn.py, 살아 있던 90초): 피드 높이가 0 <-> 54.5px 를 오가고,
+     배너가 떠 있는 5초 창 안에서 «최대 2회 · 진폭 54.5px» 움직였다.
+     자리를 안 비워 두면 누르려던 버튼이 손가락 밑에서 그만큼 뛴다.
+     비워 두면 0~3줄 어느 경우든 이 상자의 높이가 같아 배너가 «가만히» 있는다.
+     (독일어처럼 한 줄이 접히면 그때는 내려간다 - 겹치는 것보다 내려가는 게 옳다.) */
+  min-height: calc(var(--feed-line) * var(--feed-rows)
+    + var(--feed-gap) * (var(--feed-rows) - 1));
+  text-shadow: var(--hud-outline);
+}
+
+/* 피드 한 줄은 «문장»이다(ui/shell.ts pushKill 주석).
+   ★ 판도 알약도 없다. 글자만 «지나간다» - 원작의 킬 알림이 그렇다.
+   9개 로케일 중 독일어·러시아어는 한 줄에 안 들어가므로 접히게 둔다(nowrap 금지). */
+.feed-item {
+  /* ★ 크기는 .hud-feed 가 갖는 --feed-fs 가 정본이다(자리 예약 계산과 «같은» 값). */
+  font-size: var(--feed-fs);
+  font-weight: 500;
+  padding: 1px 0;
+  color: var(--muted);
+  animation: feedIn var(--t-base) var(--ease-out-quart) both;
+  line-height: 1.35;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  max-width: 100%;
+  text-align: center;
+}
+
+/* 이름만 «잉크»로. 문장을 읽지 않아도 「누가 / 누구를」이 먼저 잡힌다. */
+.feed-name {
+  font-weight: 700;
+  color: var(--ink);
+  font-style: normal;
+}
+
+/* 내가 잡았다 - 이 화면에서 유일하게 «내 성과»인 줄이라 신호색으로 세운다. */
+.feed-item.is-mine {
+  color: var(--signal);
+  font-weight: 700;
+}
+
+.feed-item.is-mine .feed-name {
+  color: var(--signal);
+}
+
+/* 내가 당했다 - 이름만 위험색. 줄 전체를 붉히면 「죽음」 연출과 겹쳐 시끄럽다. */
+.feed-item.is-lost .feed-name {
+  color: var(--danger);
+}
+
+@keyframes feedIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+}
+
+.hud-pause {
+  position: absolute;
+  top: calc(var(--s2) + var(--sat));
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-pill);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 누르는 것이라 받침은 남긴다(어포던스). 테두리는 뺀다. */
+  background: var(--hud-plate);
+  transition: background var(--t-base) var(--ease-out-quart);
+}
+
+.hud-pause:hover {
+  background: var(--surface-2);
+}
+
+.hud-pause::before,
+.hud-pause::after {
+  content: '';
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--muted);
+  margin: 0 2px;
+}
+
+/* == 결과 화면 ============================================================ */
+
+.result-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--danger);
+  text-wrap: balance;
+}
+
+/* 같은 h1 을 두 화면이 쓴다. 사망은 위험색, 일시정지는 «아무 일도 없다»는
+   뜻이라 본문색이다. 전에는 이 규칙이 shell.ts 의 인라인 style 에 숨어 있었다. */
+.result-title.is-neutral {
+  color: var(--ink);
+}
+
+.result-cause {
+  margin: var(--s2) 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+  min-height: 20px;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.badge {
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  background: var(--signal);
+  color: var(--on-signal);
+  font-size: 12.5px;
+  font-weight: 800;
+  animation: fadeIn var(--t-slow) var(--ease-out-quart) both;
+}
+
+.badge-unlock {
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 최종 순위 스트립 - 내 앞뒤 줄을 보여준다. 「몇 위였나」가 숫자가 아니라
+   «자리»로 읽힌다. 게임 고유 정보라 템플릿이 아니다. */
+.standing {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.standing-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: var(--s2);
+  align-items: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  padding: var(--s2);
+  border-radius: var(--r-s);
+}
+
+.standing-row i {
+  font-style: normal;
+  text-align: right;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.standing-row u {
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standing-row s {
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* ★ 예전에는 이 줄을 통째로 «채웠다». 결과 화면에서 가장 큰 색 덩어리가
+   되어 화면의 인상을 혼자 결정했다(President 가 지적한 「갈색 판」이 이것이다).
+   면적을 줄이는 것이 요점이므로 채우기를 «올림»으로 바꾼다: 한 단 밝은 표면
+   + 굵은 이름 + 신호색 점수. 스코어보드가 원래 쓰는 문법 그대로다.
+
+   ⛔ 왼쪽에 굵은 색 막대를 세우는 방법은 «쓰지 않는다». 한 번 그렇게 짰다가
+     설계 검출기(impeccable detect.mjs)의 side-tab 항목에 잡혔다 — 카드 한쪽에
+     두꺼운 색 테를 두르는 것은 자동 생성 UI 의 가장 알아보기 쉬운 표식이다.
+     굵기와 색만으로 충분한 자리에 형태를 하나 더 들이지 않는다. */
+.standing-row.me {
+  background: var(--surface-2);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.standing-row.me i {
+  color: var(--muted);
+}
+
+.standing-row.me s {
+  color: var(--signal);
+}
+
+/* 생략 구간 표시(내가 상위권 밖일 때). 점 세 개가 아니라 얇은 눈금. */
+.standing-gap {
+  height: 12px;
+  display: flex;
+  align-items: center;
+  padding-left: 36px;
+}
+
+.standing-gap::before {
+  content: '';
+  width: 12px;
+  height: 1px;
+  background: var(--surface-3);
+}
+
+/* == 모션 축소 ============================================================
+   선택이 아니다. 모든 애니메이션에 대안이 있어야 한다. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* == 좁은 화면 ============================================================
+   실렌더에서 발견한 버그: 390px 폭에서 킬 피드(가운데 정렬)와 순위표가
+   «겹쳐» 서로를 못 읽게 만들었다. 가운데 정렬은 넓은 화면 전제였다.
+   좁은 화면에서는 좌측 점수판 «아래»로 내리고 좌측 정렬로 바꾼다.
+   이런 건 데스크톱만 보면 절대 안 잡힌다. 모바일 실렌더가 근거다. */
+
+@media (max-width: 560px) {
+  .hud-board {
+    width: 140px;
+  }
+  .hud-board li {
+    font-size: 11.5px;
+    grid-template-columns: 13px 1fr auto;
+  }
+  .hud-left {
+    left: calc(var(--s4) + var(--sal));
+    right: auto;
+    transform: none;
+    align-items: flex-start;
+    top: calc(var(--sat) + 52px);
+    /* 184px = 순위표(140) + 좌우 여백. 이 폭이 곧 배너의 상한이기도 하다 —
+       배너가 순위표 쪽으로 자랄 수 없다는 뜻이다(상수 대조가 아니라 «구조»). */
+    width: calc(100% - 184px - var(--sal) - var(--sar));
+  }
+  .hud-feed {
+    align-items: flex-start;
+    /* ★ 글자 크기만 바꾼다 - min-height 는 이 변수에서 «유도»되므로 자동으로 따라온다.
+       예전처럼 .feed-item 에 11px 을 직접 쓰면 예약 높이가 12px 기준으로 남아 어긋난다. */
+    --feed-fs: 11px;
+  }
+  .feed-item {
+    max-width: 100%;
+    text-align: left;
+  }
+  .hud-score b {
+    font-size: 18px;
+  }
+  /* 일시정지 버튼이 가운데면 좁은 화면에서 점수판/순위표 사이에 낀다. */
+  .hud-pause {
+    left: auto;
+    right: calc(160px + var(--sar));
+    transform: none;
+  }
+}
+
+/* == 넓은 화면: 2단 =======================================================
+   1600x900 에서 메뉴가 «세로로 잘렸다». 스크롤은 되지만 잘린 화면은
+   그 자체로 「미완성」 신호다. 넓은 화면에는 «가로 공간»이 남아 있으므로
+   구조를 바꾼다(제품 UI 의 반응형은 유체 타이포가 아니라 «구조»다).
+     왼쪽  - 시작하기까지의 «흐름»(이름 -> 시작 -> 스킨)
+     오른쪽 - 참고 정보(기록 / 설정 / 조작법)
+   이렇게 나누면 「무엇을 먼저 하면 되는가」가 왼쪽 한 줄로 읽힌다. */
+@media (min-width: 940px) and (min-height: 700px) {
+  .panel-menu {
+    width: min(760px, 100%);
+    display: grid;
+    /* ★ minmax(0, 1fr) 이어야 한다. 그냥 1fr 은 «자동 최소폭 = 내용폭»이라
+       스킨 레일(스와치 12개 = 640px)이 열을 밀어 패널이 882px 로 넘쳤다.
+       가로 스크롤 컨테이너를 그리드에 넣을 때 반드시 밟는 함정이다. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--s3) var(--s4);
+    align-items: start;
+  }
+  .panel-menu > .brand {
+    grid-column: 1 / -1;
+  }
+  .panel-menu .brand h1 {
+    font-size: 40px;
+  }
+  .panel-menu .brand-mark {
+    width: 96px;
+    height: 66px;
+  }
+}
+
+@media (max-height: 700px) {
+  .panel {
+    gap: var(--s2);
+  }
+  .brand h1 {
+    font-size: 28px;
+  }
+  .brand-mark {
+    width: 70px;
+    height: 48px;
+  }
+  .block {
+    padding: var(--s3);
+  }
+}
+
+/* == 첫 판 조작 안내 ======================================================
+   튜토리얼 화면을 따로 만들지 않는다. 조작이 두 가지뿐이라 화면을 하나 더
+   끼우면 «시작까지의 거리»만 멀어진다. 하단에 몇 초만 조용히 띄운다.
+   ★ 조이스틱/부스트 버튼(우하단)과 겹치지 않게 «좌하단 기준 가운데»에 둔다. */
+
+.hud-hint {
+  /* ★ 안내판은 «읽는 것»이지 누르는 것이 아니다. 화면 아래 가운데 = 엄지가
+   *   가는 자리라 터치를 삼키면 조작이 통째로 죽는다.
+   *   ⚠지금도 삼키지 «않는다» — 부모 #hud 가 pointer-events:none 이고 이 판은
+   *     그 자식이라 상속으로 이미 none 이다(shell.ts 가 this.hud.appendChild).
+   *     그래도 명시한다: 나중에 누가 이 판을 #hud 밖으로 옮기거나 #hud 에
+   *     pointer-events:auto 를 주면 그 순간 조용히 조작을 먹는 요소가 된다. */
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--s5) + var(--sab));
+  /* ★ width 를 «반드시» 지정한다. left:50% 로 잡으면 자동 너비의 기준이
+     「왼쪽 절반부터 오른쪽 끝까지」= 화면의 절반이 된다. transform 은 그린
+     자리만 옮길 뿐 이 계산을 되돌리지 않는다. 그래서 한 줄이면 충분한 문구가
+     반폭 상자 안에서 두 줄로 접혔다(390px 실렌더). max-content 로 내용만큼
+     넓히고 max-width 로만 제한한다. */
+  width: max-content;
+  max-width: min(420px, calc(100% - 32px));
+  text-align: center;
+  /* 안내는 «읽는 판»이라 불투명 표면을 유지한다(이 파일 조건 1). 테두리만 뺀다. */
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: var(--s3) var(--s4);
+  /* ★ 알약이 아니라 판이다. 두 줄짜리 알약은 「한 줄이어야 하는데 넘쳤다」로
+     읽힌다 - 실제로 390px 에서 낱말 한가운데가 잘려 두 줄이 됐다. */
+  border-radius: var(--r-m);
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  animation: hintIn var(--t-slow) var(--ease-out-quart) both;
+  transition: opacity var(--t-slow) var(--ease-out-quart);
+}
+
+/* 방향(먼저 해야 하는 것)이 잉크, 질주(그다음)가 흐린 색. 두 줄에도 위계가 있다. */
+.hud-hint b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.hud-hint span {
+  font-weight: 500;
+}
+
+.hud-hint.is-out {
+  opacity: 0;
+}
+
+@keyframes hintIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (max-width: 560px) {
+  .hud-hint {
+    /* ★ 폰에서는 «엄지 호» 위로 올린다. 조이스틱은 손가락이 닿은 곳에
+       생기므로 34vh 에서는 스틱 상단(원점-58px)과 겹쳤다. 42vh 면 원점이
+       화면 아래쪽에 있는 한 겹치지 않는다 - 엄지로 닿는 자리는 사실상
+       전부 그 아래다. 이건 «두 번째» 방어선이고, 첫 번째는
+       shell.dismissControlHint(첫 조작 즉시 접기)다. */
+    bottom: calc(var(--sab) + 42vh);
+    font-size: 12.5px;
+  }
+}
+
+
+/* == 리워드 광고 제안 (2026-08-31 신설) ====================================
+   원칙 셋 — 이 파일 머리말의 조건을 그대로 상속한다.
+   1) 불투명 표면 위에만 글자. 아레나가 뒤에서 계속 바뀐다.
+      => backdrop-filter 0. 반투명 배경 0. --surface-2 판이다.
+   2) «신호 앰버는 작게». 큰 면적을 앰버로 채우면 베이지/갈색으로 읽힌다
+      (이 파일 머리말 2번 항목, President 지적 이력). 그래서 앰버는
+      «30px 아이콘 칩 + 1px 테두리»에만 쓰고 판 자체는 조용한 표면이다.
+      결과적으로 .btn-primary(차가운 흰색 = 「행동」)의 위계를 «빼앗지 않는다» —
+      광고를 안 보는 것이 여전히 기본 경로다.
+   3) 터치 타깃: 판 전체가 min-height 60px. WCAG 2.2 AA 웹 기준(24 CSS px)의
+      2.5배이고 iOS 44pt / Android 48dp 도 넘는다.
+   ★ 애니메이션은 transform/opacity 만 쓴다(레이아웃·페인트 유발 0).
+     prefers-reduced-motion 은 이 파일 상단의 전역 규칙이 이미 잡는다. */
+
+.btn-reward {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  min-height: 60px;
+  padding: var(--s2) var(--s4) var(--s2) var(--s3);
+  border-radius: var(--r-m);
+  background: var(--surface-2);
+  /* 앰버 «선»만으로 리워드임을 표시한다. 면적이 아니라 윤곽이 신호다. */
+  border: 1px solid var(--reward-edge);
+  text-align: left;
+  transition: transform var(--t-fast) var(--ease-out-quart),
+    background var(--t-base) var(--ease-out-quart),
+    border-color var(--t-base) var(--ease-out-quart);
+}
+
+.btn-reward:hover:not([disabled]) {
+  background: var(--surface-3);
+  border-color: var(--reward-edge-hi);
+}
+
+.btn-reward:active:not([disabled]) {
+  transform: scale(0.985);
+}
+
+.btn-reward[disabled] {
+  cursor: default;
+  transform: none;
+}
+
+/* 광고를 불러오는 중. 판 자체는 그대로 두고 «글자만» 흐리게 —
+   판이 사라지면 눌린 자리가 없어져 유저가 「눌리긴 한 건가」를 못 읽는다. */
+.btn-reward[aria-busy='true'] .rw-text {
+  opacity: 0.62;
+}
+
+/* 아이콘 칩: 재생 삼각형. ★이미지 에셋 0장 규칙을 지킨다 —
+   글리프('▶')는 플랫폼마다 자형·수직정렬이 다르다. CSS 삼각형은 결정적이다. */
+.rw-ico {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--signal);
+}
+
+.rw-ico::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* 삼각형의 시각 중심은 기하 중심보다 «오른쪽»이다. 1px 왼쪽으로 민다. */
+  transform: translate(calc(-50% + 1px), -50%);
+  border-style: solid;
+  border-width: 6px 0 6px 9px;
+  border-color: transparent transparent transparent var(--on-signal);
+}
+
+/* 이미 받은 상태(늦게 도착한 보상 등). 앰버 -> 청록(=「완료」)으로 갈아 신호를 구분한다. */
+.btn-reward.is-ready {
+  border-color: var(--reward-edge-done);
+}
+
+.btn-reward.is-ready .rw-ico {
+  background: var(--accent);
+}
+
+.btn-reward.is-ready .rw-ico::before {
+  /* 체크 표시. 두 변만 남긴 사각형을 45도 돌린다. */
+  transform: translate(-50%, -58%) rotate(45deg);
+  width: 6px;
+  height: 11px;
+  border-width: 0 2.5px 2.5px 0;
+  border-color: var(--on-signal);
+}
+
+.rw-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* 로케일마다 문자열 길이가 다르다(de/ru 는 ko 의 2배가 흔하다).
+     고정폭을 «가정하지 않는다» - 줄바꿈을 허용하고 높이로만 잡는다. */
+  min-width: 0;
+}
+
+.rw-title {
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+  line-height: 1.25;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.rw-sub {
+  font-size: 12.5px;
+  font-weight: 500;
+  font-style: normal; /* <i> 로 만들었지만 기울임은 쓰지 않는다 */
+  color: var(--muted); /* surface-2 위 7.2:1 (tools/contrast.mjs) */
+  line-height: 1.3;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+/* -- 잠긴 스킨의 광고 배지 --------------------------------------------------
+   ★ 카드 «전체»가 터치 타깃이다(72x48). 이 배지는 표식일 뿐 별도 타깃이 아니다.
+     작은 배지를 따로 누르게 만들면 24px 미만 타깃이 하나 생긴다. */
+.skin-ad {
+  position: absolute;
+  /* ★오른쪽 위가 아니라 «왼쪽 위»다. 스킨 미리보기는 꼬리 왼쪽아래 -> 머리 오른쪽위
+     대각선이라, 오른쪽 위에 두면 배지가 «머리와 눈»을 가린다(실렌더 확인).
+     머리는 종을 구분하는 가장 강한 단서다 - 그걸 가리면 카드가 카드 구실을 못 한다. */
+  top: 3px;
+  left: 3px;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--signal);
+  /* 카드 미리보기(뱀 그림) 위에 얹히므로 어두운 테로 «떼어낸다». */
+  box-shadow: 0 0 0 2px var(--surface-2);
+  pointer-events: none;
+}
+
+.skin-ad::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(calc(-50% + 1px), -50%);
+  border-style: solid;
+  border-width: 3.5px 0 3.5px 5px;
+  border-color: transparent transparent transparent var(--on-signal);
+}
+
+/* 광고로 열 수 있는 카드는 «잠긴 채로» 조금 더 밝다.
+   [disabled] 의 0.26 은 「손댈 수 없다」는 뜻이고, 이건 손댈 수 있다.
+   그렇다고 해금된 카드(1.0)와 같으면 잠긴 사실이 사라진다. */
+.skin.is-ad canvas {
+  opacity: 0.44;
+}
+
+.skin.is-ad {
+  border-color: var(--reward-edge-ad);
+}
+
+/* -- 토스트 ---------------------------------------------------------------
+   리워드 결과를 알리는 유일한 통로. 화면을 막지 않는다(pointer-events:none).
+   ★ 「광고를 봤는데 아무 일도 안 일어났다」가 네온 스레드 -23 의 사고 모양이었다.
+     성공도 실패도 «반드시» 한 줄로 말한다. */
+.rw-toast {
+  position: fixed;
+  z-index: calc(var(--z-overlay) + 1);
+  left: 50%;
+  top: calc(var(--sat) + 14px);
+  /* left:50% 고정 요소는 남은 50vw 안에서 shrink-to-fit 한다 - max-content 로 끊는다
+     (네온 스레드에서 두 줄로 접힌 실측이 있다). */
+  width: max-content;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 11px 18px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  box-shadow: 0 10px 24px rgba(4, 6, 13, 0.55);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -8px);
+  transition: opacity var(--t-base) var(--ease-out-quart),
+    transform var(--t-base) var(--ease-out-quart);
+}
+
+.rw-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* «판이 진행 중»일 때의 자리(2026-08-31 기록 돌파). 위쪽은 HUD 가 쓴다 —
+   실렌더에서 토스트가 「길이/순위」와 순위표 1~3위를 통째로 덮었다.
+   높이는 .hud-hint 와 같은 «엄지 호 위» 대역이라 조이스틱과도 겹치지 않는다. */
+.rw-toast.low {
+  top: auto;
+  bottom: calc(var(--sab) + 130px);
+  transform: translate(-50%, 8px);
+}
+
+.rw-toast.low.show {
+  transform: translate(-50%, 0);
+}
+
+@media (max-width: 560px) {
+  .rw-toast.low {
+    bottom: calc(var(--sab) + 34vh);
+  }
+}
+
+@media (max-width: 560px) {
+  .rw-title {
+    font-size: 15px;
+  }
+  .rw-sub {
+    font-size: 12px;
+  }
+}
+
+
+/* == 기록 돌파 제안 배너 (2026-09-01 개정) ================================
+   ★ 옛 구현은 «게임을 멈춰 놓고» 뜨는 판이었다. President 가 그것을 «방해»로
+     판정해 배너로 바뀌었다. 그래서 이 조각의 규율은 「멈춘 화면을 잘 읽히게」가
+     아니라 **「흐르는 게임을 안 건드린다」**로 통째로 바뀐다:
+
+     1) 자리 — 상단 HUD 스크림(150px) «바로 밑». 위쪽은 점수·일시정지·피드·
+        순위표가 쓰고, 화면 «중앙»은 내 뱀이다. 아래 절반은 조종하는 엄지 자리다
+        (조이스틱은 «처음 닿은 곳»에 생겨서 고정 구역이 없다 ⇒ 아래는 통째로 피한다).
+     2) 크기 — 탭할 수 있는 최소한(min-height 48px, WCAG 2.2 AA 의 24px 을 크게
+        넘긴다)만. 그 이상 키우면 아레나를 그만큼 더 가린다.
+     3) 통과 — 요소가 «버튼 하나»뿐이라, 그 사각형 밖의 터치는 처음부터 게임으로 간다.
+        (컨테이너로 화면을 덮고 pointer-events:none 을 거는 방법도 있지만, 그러면
+         투명한 판이 늘 떠 있게 된다. 없는 편이 확실하다.)
+     4) 60fps — 애니메이션은 transform/opacity «만». blur·backdrop-filter 0.
+        남은 시간 막대도 width 가 아니라 scaleX 다(레이아웃 0).
+   ★ 배경색을 «가정하지 않는다» — 아레나는 매 순간 색이 다르므로 불투명 표면을 깐다.
+
+   ── 2026-09-02 개정 (President 실기기: 「1.2배 광고가 시야를 좀 방해한다.
+      킬로그 밑에 좀더 작게(그래도 인식할 수는 있는 크기로)」) ────────────────
+     위 1)·2)가 «부족했다»는 판정이다. 화면 중앙 축에 놓인 188x58 불투명 알약은
+     아레나 상단 - 위협이 들어오는 통로 - 을 통째로 덮고 있었다. 두 가지를 바꾼다:
+     1') 자리 — 상수(sat+210px)를 «버렸다». 킬 피드와 같은 왼쪽 열(.hud-left)의
+         «다음 형제»가 되어 자리가 흐름에서 나온다. 킬로그가 몇 줄이 되든 배너가
+         내려가고, 킬로그는 한 픽셀도 밀리지 않는다. 중앙 축에서 완전히 비켰다.
+     2') 크기 — 58 -> 34px 높이, 아이콘 22 -> 13px, 제목 15 -> 12.5px, 부제 12 -> 11px.
+         면적 기준 약 -60%. 하한 근거는 «WCAG 2.2 AA(Web) 24px», iOS 44pt 가 아니다.
+     3')·4') 는 그대로다 — 요소는 여전히 버튼 하나뿐이고, 애니메이션도 그대로다.
+
+   ── 2026-09-02 재개정 (President 실기기: 「킬로그 밑으로 옮기니까 좀 «리워드가
+      안 보여». 그리고 «리워드 광고 배너가 못 생겼어». 적당히 키우면서 «이쁘게»?」) ──
+     ★자리는 «그대로»다 — 왼쪽 열(킬 피드 밑)은 President 가 지시한 자리이고 불만이
+       없었다. 바뀌는 것은 «크기»와 «생김새» 둘뿐이다.
+     2'') 크기 — 34 -> 50px. 세 값의 «가운데»다:
+            09-01 원본 194x58 (면적 11,252) ← 화면 «한가운데»라 컸다
+            09-02 -22  159x42 (면적  6,718) ← 너무 줄여 「안 보인다」
+            채택      194x50 (면적  9,762) = 원본 대비 -13% · -22 대비 +45%
+          ★자리가 왼쪽 열로 바뀌었으니 «원본 크기가 곧 원본 방해»가 아니다.
+            실측: 화면 점유 2.04% -> 2.97%, 상단 절반 점유 4.08% -> 5.93%,
+            점수·순위표·피드·일시정지와 겹침 «전부 0»(tools/shots_offer_ab.py).
+          ★폭 194px 은 «상수가 아니다» — 열 폭 상한(100% = 순위표 앞에서 멈춤)과
+            글자 길이가 정한다. 독일어·360px 에서는 두 줄이 되고 키가 65px 이 된다.
+            두 줄은 President 가 이미 「괜찮다」고 한 거동이다.
+     2''') 생김새 — 안 4종을 «같은 프레임에 렌더해» 골랐다(_offer_evidence_260902):
+            V2 크기만        : 커졌지만 여전히 밋밋 = 「못생겼어」가 안 풀린다
+            V3 다듬기        : 채택 방향
+            V4 왼쪽 앰버 캡  : 눈에는 띄지만 «앰버를 크게 쓴다» = 이 파일 머리말의
+                               「신호는 작을수록 신호다」와 정면 충돌 ⇒ 기각
+            V5 = V3 을 조인 것 ⇒ «채택»
+          바뀐 것 넷:
+            ① 아이콘에 «뜻»을 넣었다 — 밋밋한 원반 -> «위로 향한 꺾쇠». 이 배너가
+               파는 것이 「키우기」라서 위쪽 화살이 그 말을 그림으로 한 번 더 한다.
+            ② 「눌러라」를 말한다 — 오른쪽 끝 꺾쇠. 리워드 광고는 «자발적으로 누르는»
+               것이라 눌리는 물건으로 보이는 것이 곧 전환이다.
+            ③ 표면에 «층»을 줬다 — surface-2 -> surface 세로 그라디언트. 아레나 위에
+               «떠 있는 판»으로 읽힌다. ⛔blur·backdrop-filter 0(그라디언트는 합성 한 장).
+            ④ 앰버를 «분리»로 썼다 — 테를 36% -> 62%, 그림자에 앰버 글로우 20%.
+               색을 더 칠한 게 아니라 «가장자리»만 물들였다(머리말의 알파 규율). */
+.rw-offer {
+  /* ★ position:fixed + top 상수(sat+210px) 였다. President 가 실기기에서 그 자리를
+     「시야 방해」로 판정했다(2026-09-02) ⇒ 킬 피드의 «다음 형제»로 내려왔다.
+     relative 인 이유는 하나 - 남은 시간 막대(absolute)의 기준이 되기 위해서다. */
+  position: relative;
+  /* ⚠#hud 는 pointer-events:none 이다. 배너«만» 되돌린다 — 그래야 배너 사각형
+     밖의 터치가 전부 게임으로 간다(qa_reward R12-e/f 가 좌표로 잰다). */
+  pointer-events: auto;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  /* 22px 아이콘 시절의 9px 에서 조였다(2026-09-03). 아이콘이 작아졌으므로
+     간격도 같이 줄어야 «한 덩어리»로 읽힌다. */
+  gap: 7px;
+  /* 남은 시간 막대를 아래 모서리에 붙이는 기준이자, 모서리 밖으로 안 새게 한다. */
+  overflow: hidden;
+  /* ★ 50px(2026-09-02 재개정. 34 -> 50). 근거:
+       - 하한 = WCAG 2.2 AA(Web) 최소 탭 타깃 24 CSS px 을 «두 배 넘긴다».
+         ⛔iOS 44pt / Android 48dp 를 웹에 그대로 쓰는 것은 틀린 기준이다.
+       - 상한 = 09-01 원본(58px)보다 «작게». 그때는 화면 한가운데라 컸지만
+         지금은 왼쪽 열이라 같은 크기가 같은 방해가 아니다 — 그래도 원본을
+         넘지 않는 선에서 멈춘다(되돌리는 것이 아니라 «중간»이다).
+       - «보이는 사각형 = 누르는 사각형». 투명 패딩으로 탭 영역만 키우지 않는다 —
+         아레나 위에 안 보이는 사각지대를 만드는 쪽이 더 나쁜 방해다. */
+  min-height: 50px;
+  /* 열 폭을 넘지 않는다. 모바일에서는 순위표 앞에서 멈춘다는 뜻이다. */
+  max-width: 100%;
+  /* 오른쪽 18px 은 «꺾쇠 자리»다(아래 ::after). 글자가 그 밑으로 들어가지 않게
+     여기서 «자리를 비워» 둔다 — 겹침을 z-index 로 덮는 방식은 쓰지 않는다.
+     ★왼쪽 12 → 8(2026-09-03). 아래 「정렬」 절 참고 — 잉크를 열 축에 붙인다. */
+  padding: 7px 18px 8px 8px;
+  /* ★알약(--r-pill) 이 아니다(2026-09-03 지적 5·1).
+     999px 알약은 50px 높이에서 좌우에 «반지름 25px 짜리 둥근 캡»을 만든다.
+     그 캡 때문에 (a) 다른 HUD 와 계열이 달라 보이고 (b) 좌변이 «곡선»이라
+     위의 글자 열(곧은 좌변)과 정렬돼 보이지 않는다 — 두 지적이 같은 원인이었다.
+     --r-m 은 카드·패널이 쓰는 반경이라 HUD 안에서 이물감이 없다. */
+  border-radius: var(--r-m);
+  /* ★HUD 언어로 되돌렸다(2026-09-03). 전에는 surface-2 → surface 그라디언트라
+     혼자 «밝은 카드»였다. 옆의 일시정지 버튼은 --hud-plate 이고 순위표·킬로그는
+     판이 아예 없다(글자 + 윤곽). 나란히 놓으면 배너만 다른 종족으로 보였다. */
+  background: var(--hud-plate-solid);
+  /* ★테두리를 «없앴다». 판을 두르는 앰버 테는 화면에서 «가장 큰 앰버»였고,
+     아이콘·제목·막대와 신호가 넷으로 갈렸다(President 지적 2).
+     HUD 의 다른 판(.hud-pause)도 테두리가 없다 — 어두운 판은 스스로 윤곽이 된다. */
+  border: 0;
+  /* 앰버 글로우도 걷었다(같은 이유). 판을 아레나에서 떼어내는 것은 «어둠»이다.
+     ★배너는 뜬 뒤 5초 동안 «정지»해 있다(움직이는 것은 자식인 막대의 scaleX 뿐).
+       그래서 이 그림자는 매 프레임 다시 그려지지 않는다 — 실측으로 확인했다. */
+  box-shadow: 0 6px 16px rgba(4, 6, 13, 0.5);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  animation: offerIn 200ms var(--ease-out-quart) both;
+}
+
+.rw-offer[disabled] {
+  cursor: default;
+}
+
+/* 「눌러라」. ★글리프가 아니라 «두 변으로 그린» 꺾쇠다 — 텍스트 노드가 없어야
+   스크린리더가 이 장식을 읽지 않고, 폰트가 무엇이든 같은 굵기로 나온다.
+   리워드 광고는 유저가 «자발적으로» 누르는 것이라, 눌리는 물건으로 보이는 것이
+   곧 전환이다. 그런데 지금 것은 「알림」처럼 생겼었다. */
+.rw-offer::after {
+  content: '';
+  position: absolute;
+  right: 7px;
+  /* ★판 «세로 중앙»이 아니라 «제목 줄»에 정착시킨다(2026-09-03 지적 4).
+     중앙에 두면 오른쪽 빈 공간에 홀로 떠서 어디에 속한 표식인지 모호했다.
+     7px = padding-top, 0.55em = 제목 첫 줄의 대략적 광학 중심.
+     ★em 기준이라 독일어처럼 «제목이 두 줄»이 되어도 첫 줄을 계속 따라간다. */
+  top: 0;
+  width: 5px;
+  height: 5px;
+  transform: translateY(calc(7px + 0.55em)) rotate(45deg);
+  /* ★앰버가 아니다. 앰버는 «아이콘 + 제목» 한 구역에만 쓴다(지적 2).
+     꺾쇠는 「눌러라」라는 «구조» 신호라 본문색 계열이 맞다. */
+  border-right: 1.8px solid var(--muted);
+  border-top: 1.8px solid var(--muted);
+  opacity: 0.9;
+}
+
+/* 앰버 원반. ★아이콘 폰트·이모지를 쓰지 않는다(플랫폼마다 다르게 그려진다).
+   13 -> 22px(2026-09-02 재개정). 이 원반이 「그 배너다」를 3m 밖에서 알려주는
+   표식이라, 작게 줄였을 때 가장 먼저 잃은 것이 이것이다.
+   ★그리고 «뜻»을 넣었다 — 안에 «위로 향한 꺾쇠». 이 배너가 파는 것이 「키우기」다.
+     밋밋한 점은 아무 말도 하지 않는다(안 V2 실렌더에서 그게 그대로 보였다). */
+/* ★22 → 16px (2026-09-03 지적 3). 22px 원반 + 4px 링 = 시각 지름 30px 이라
+   50px 판의 60% 를 먹었다 = 「알약에 배지를 덧댄」 인상. 16 + 2.5px 링 = 21px.
+   판을 두르던 앰버 테를 걷은 대신 이 점 하나가 «유일한 앰버 표식»이 되므로,
+   작아져도 신호는 오히려 또렷해진다(신호는 작을수록 신호다). */
+.rw-offer-ico {
+  position: relative;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--signal);
+  box-shadow: 0 0 0 2.5px rgba(255, 180, 60, 0.2);
+}
+
+/* 위쪽 꺾쇠. 두 변으로 그린다(글리프 금지 — 웹폰트 0건이라 어떤 폰트가 올지 모른다). */
+.rw-offer-ico::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 53%;
+  width: 5px;
+  height: 5px;
+  margin: -3px 0 0 -2.5px;
+  border-left: 1.8px solid var(--on-signal);
+  border-top: 1.8px solid var(--on-signal);
+  transform: rotate(45deg);
+}
+
+.rw-offer-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* 로케일마다 길이가 다르다. 고정폭을 «가정하지 않는다» — 넘치면 줄인다. */
+  min-width: 0;
+}
+
+/* 12.5 -> 15px(2026-09-02 재개정). 순위표(11.5px)와 점수(18px) «사이»다 —
+   HUD 안에서 두 번째로 큰 글자가 되어 「보상이 떴다」가 한눈에 읽힌다.
+   12.5px 은 순위표와 사실상 같은 급이라 배너가 «순위표의 한 줄»처럼 보였다. */
+.rw-offer-title {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--signal); /* surface 위 9.81:1 (tools/contrast.mjs 실측) */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 11 -> 12px. 킬 피드(11px)보다 «한 단 위»다 — 배너가 피드 밑에 붙어 있어서
+   같은 크기면 피드의 네 번째 줄로 읽힌다(그게 「안 보여」의 절반이었다). */
+.rw-offer-sub {
+  font-size: 12px;
+  font-weight: 600;
+  font-style: normal;
+  line-height: 1.2;
+  color: var(--muted); /* surface 위 8.54:1 (tools/contrast.mjs 실측) */
+  word-break: keep-all;
+}
+
+/* 남은 5초. ★scaleX 만 바꾼다 — 레이아웃·페인트 유발 0.
+   transform-origin 이 왼쪽이라 「줄어드는 심지」로 읽힌다. */
+.rw-offer-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* ★앰버가 아니다(2026-09-03 지적 2). 이 막대는 「남은 시간」이라는 «상태»지
+     「보상」이라는 «신호»가 아니다. 앰버가 화면에 네 번 나오던 것의 한 자리였다.
+     3 → 2px 로 낮춘 것도 같은 이유 — 상태는 조용해야 한다. */
+  height: 2px;
+  background: rgba(244, 246, 250, 0.26);
+  transform-origin: 0 50%;
+  transform: scaleX(1);
+  opacity: 1;
+  /* * 2026-09-02 <<실측이 만든 줄>>: 배너에 앰버 글로우와 그라디언트를 넣은 뒤
+     프레임이 59.56 -> 58.69 fps 로 떨어졌다(tools/hud_frame_ab.py, cpu 4x).
+     원인은 배너가 아니라 <<이 막대>>였다 - 5초 동안 50번쯤 scaleX 를 쓰는데,
+     자기 레이어가 없으면 그때마다 <<부모 타일>>이 다시 칠해진다. 부모 타일에는
+     이제 20px 블러 그림자가 들어 있어 그 칠이 비싸졌다.
+     레이어를 따로 주면 scaleX 가 합성만으로 끝난다. 이 요소는 5초만 산다. */
+  will-change: transform;
+}
+
+/* ★ translateX(-50%) 가 «빠졌다» — 더 이상 fixed·중앙정렬이 아니라 왼쪽 열의
+   흐름 안에 있기 때문이다. 남겨 두면 뜨는 200ms 동안 배너가 반 폭 왼쪽으로 튄다. */
+@keyframes offerIn {
+  from {
+    /* scale 을 더했다(2026-09-02) — «도착»하는 느낌이 있어야 눈이 간다.
+       transform·opacity «만» 쓴다: 레이아웃·페인트 0, 합성만으로 끝난다. */
+    transform: translateY(-6px) scale(0.94);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* 움직임을 줄여 달라고 한 사람에게는 «움직이지 않는다». 정보는 그대로다. */
+@media (prefers-reduced-motion: reduce) {
+  .rw-offer {
+    animation: none;
+  }
+}
+
+/* -- 복귀 카운트다운 -------------------------------------------------------
+   ★ 오버레이가 «아니다». 이유 둘:
+     1) .overlay 인덱스를 늘리면 검사기가 엉뚱한 판을 집는다(shell.buildOffer 주석).
+     2) 화면을 막으면 안 된다 — 멈춘 아레나를 «보면서» 다음 수를 정하는 3초다.
+   ⇒ pointer-events:none 인 숫자 한 장만 얹는다.
+   ★ 배경색을 «가정하지 않는다». 아레나 색은 매 순간 다르므로 불투명 원반을 깐다. */
+.rw-count {
+  position: fixed;
+  z-index: calc(var(--z-overlay) + 1);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--t-base) var(--ease-out-quart);
+}
+
+.rw-count.show {
+  opacity: 1;
+}
+
+.rw-count-n {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--reward-edge);
+  color: var(--ink);
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 12px 30px rgba(4, 6, 13, 0.6);
+}
+
+.rw-count-l {
+  margin-top: var(--s2);
+  padding: 5px 12px;
+  border-radius: 999px;
+  /* 아레나 위에 바로 놓이는 글자다 — 반드시 불투명 표면 위에. */
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  word-break: keep-all;
+  max-width: min(280px, 70vw);
+  text-align: center;
+}
+
+/* 1초마다 «한 번» 튄다. transform/opacity 만 쓴다(레이아웃·페인트 유발 0). */
+.rw-count.tick .rw-count-n {
+  animation: countTick 620ms var(--ease-out-quart) both;
+}
+
+@keyframes countTick {
+  from {
+    transform: scale(1.16);
+    opacity: 0.55;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  /* ★자리를 «여기서 다시 정하지 않는다». 좁은 화면에서 배너가 어디로 갈지는
+     .hud-left(위 좁은화면 규칙)가 이미 정했고 — 킬 피드 바로 밑이다.
+     예전엔 여기에 max-width 를 따로 박았는데, 그 상수가 열 폭과 «두 번» 관리되는
+     값이었다. 지금은 max-width:100% 하나가 두 화면 모두에서 맞는다. */
+  .rw-count-n {
+    width: 84px;
+    height: 84px;
+    font-size: 40px;
+  }
+}

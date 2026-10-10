@@ -6,7 +6,7 @@
   ★ 그럼에도 여기에 이름을 «정적으로» 박아 두는 이유:
     링크 공유 카드·검색 크롤러·JS 실행 전 탭은 전부 정적 title 을 읽고,
     크롤러는 JS 를 실행하지 않는다. 런타임 주입만 믿으면 배포 후에야
-    옛 이름이 노출된다(애니멀 라이더 2026-08-05 실사고).
+    옛 이름이 노출된다(과거 다른 프로젝트에서 실제로 겪은 문제다).
   ★ brand.ts 를 바꾸면 아래 <title> 과 public/manifest.json 도 «같이» 바꿔라.
 -->
 <html lang="en">
@@ -23,7 +23,7 @@
     />
     <meta name="theme-color" content="#05060e" />
     <meta name="color-scheme" content="dark" />
-    <meta name="description" content="Grow the longest snake in the arena. Eat orbs, sprint to cut off rivals, and unlock 12 real snake species. Single player, fully offline - no ads, no sign-in, no data collection." />
+    <meta name="description" content="Grow the longest snake in the arena. Eat orbs, sprint to cut off rivals, and unlock 12 real snake species. Single player, no sign-in, no data collection. A short ad appears once every two runs." />
 
     <title>King Snake</title>
 
@@ -42,17 +42,17 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
     <!--
-      ★ 외부 리소스 0건. 웹폰트·애널리틱스·광고 SDK 어느 것도 로드하지 않는다.
+      ★ 웹폰트·애널리틱스는 여전히 0건이다. 광고 SDK 는 토스 안에서만
+        동적으로 불러온다 — 토스 밖(MS Store·Pages)에서는 그 청크를 요청조차 안 한다(실측).
         스토어 제출 시 「네트워크 요청 없음」을 신고하는데, 요청이 하나라도 있으면
         그 신고가 거짓이 된다(기존 5종 전부 이 규칙으로 통과했다).
     -->
-    <script type="module" crossorigin src="./assets/index-BXPeWUgG.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/style-H7WDGssU.css">
   </head>
   <body>
     <div id="app">
       <canvas id="stage"></canvas>
     </div>
+    <script type="module" src="/src/main.ts"></script>
     <script>
       // 서비스워커 등록. ★ localhost 는 건너뛴다 —
       //   개발 중에 캐시가 남으면 「고쳤는데 안 바뀐다」로 몇 시간을 태운다.

@@ -1,0 +1,27 @@
+{
+  "name": "king-snake",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build:web": "npm run clean && vite build",
+    "icons": "node tools/make_icons.mjs",
+    "pwa": "node tools/make_pwa.mjs",
+    "build:store": "npm run icons && npm run build:web && npm run pwa",
+    "qa": "python tools/qa_render.py && python tools/qa_touch.py && python tools/perf.py",
+    "qa:ads": "python tools/qa_ads.py",
+    "build:ait": "npm run clean && ait build"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3",
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "@apps-in-toss/bridge-core": "2.10.8",
+    "@apps-in-toss/web-framework": "2.10.8"
+  }
+}
