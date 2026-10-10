@@ -166,7 +166,7 @@ def make_poster(w=720, h=1080):
 
     # 서브 — 사실 진술만
     fsub = ImageFont.truetype(F_SEMI, 20)
-    tracked(d, (0, ty + ft.size * 1.28 + 44), "28 AI RIVALS  ·  OFFLINE  ·  NO ADS", fsub,
+    tracked(d, (0, ty + ft.size * 1.28 + 44), "28 AI RIVALS  ·  OFFLINE", fsub,
             MUTED, 2.0, anchor_center_x=w / 2)
 
     return img

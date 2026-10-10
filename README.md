@@ -16,6 +16,6 @@ npm run build:web  # web build into dist/
 
 ## Notes
 
-- **Ads:** the Apps-in-Toss build of this game contains ads (rewarded and interstitial placements under `src/ads`, `src/reward`). An earlier README said "No ads"; that is no longer accurate.
+- **Ads:** the Apps-in-Toss build of this game contains ads (rewarded and interstitial placements under `src/ads`, `src/reward`).
 - Production ad placement IDs, promotion codes, and the push template code are replaced with placeholders (`ait.v2.live.XXXXXXXXXXXXXXXX`, `__PROMOTION_CODE__`, `__PUSH_TEMPLATE_CODE__`), so this source does not reproduce the production build as-is.
 - Build output (`dist/`), submission bundles (`*.ait`), and internal work logs are not tracked.

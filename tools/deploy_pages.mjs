@@ -127,7 +127,7 @@ async function main() {
     console.log('레포가 없다. 생성한다: ' + OWNER + '/' + REPO);
     r = await api(token, 'POST', '/user/repos', {
       name: REPO,
-      description: 'King Snake - single-player snake arena. Offline, no ads, no tracking.',
+      description: 'King Snake - single-player snake arena. Offline, no tracking.',
       homepage: PAGES_URL,
       private: false,
       has_issues: false,
